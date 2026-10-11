@@ -142,11 +142,16 @@ export interface ReviewResponseDto {
 export interface ReviewDto {
   id: number;
   garageId: number;
+  authorUserId?: number;
   authorFullName: string;
   ratingServiceQuality: number;
   ratingPricing: number;
   ratingTimeline: number;
   ratingCommunication: number;
+  serviceQuality?: number;
+  pricing?: number;
+  timeline?: number;
+  communication?: number;
   overallRating: number;
   reviewTitle?: string | null;
   reviewText: string;
@@ -213,19 +218,27 @@ export interface ProfileEditRequest {
 }
 
 export interface CreateReviewRequest {
-  ratingServiceQuality: number;
-  ratingPricing: number;
-  ratingTimeline: number;
-  ratingCommunication: number;
+  serviceQuality: number;
+  pricing: number;
+  timeline: number;
+  communication: number;
+  ratingServiceQuality?: number;
+  ratingPricing?: number;
+  ratingTimeline?: number;
+  ratingCommunication?: number;
   reviewTitle?: string;
   reviewText: string;
 }
 
 export interface UpdateReviewRequest {
-  ratingServiceQuality: number;
-  ratingPricing: number;
-  ratingTimeline: number;
-  ratingCommunication: number;
+  serviceQuality: number;
+  pricing: number;
+  timeline: number;
+  communication: number;
+  ratingServiceQuality?: number;
+  ratingPricing?: number;
+  ratingTimeline?: number;
+  ratingCommunication?: number;
   reviewTitle?: string;
   reviewText: string;
 }

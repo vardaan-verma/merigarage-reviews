@@ -54,11 +54,6 @@ public class ReviewService {
             throw new ForbiddenOperationException("Garage owner is not permitted to review their own garage.");
         }
 
-        // Enforce one review per user per garage, including reviews that have been soft-deleted
-        if (reviewRepository.existsByGarageIdAndUserId(garageId, authorUser.getId())) {
-            throw new DuplicateResourceException("You have already reviewed this garage. One review per user per garage is enforced.");
-        }
-
         // Validate ratings 1 to 5
         validateRatings(request.ratingServiceQuality(), request.ratingPricing(), request.ratingTimeline(), request.ratingCommunication());
 

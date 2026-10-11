@@ -28,6 +28,7 @@ import org.springframework.web.context.WebApplicationContext;
 
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -127,41 +128,71 @@ class ReviewControllerTest {
     }
 
     @Test
-    void createReview_Success_AndEnforcesOneReviewPerUser() throws Exception {
+    void createReview_Success_AndAllowsMultipleReviewsPerUser() throws Exception {
         MockHttpSession authorSession = login(authorUser.getEmail());
 
-        String reviewJson = """
+        String reviewJson1 = """
                 {
                     "ratingServiceQuality": 5,
                     "ratingPricing": 4,
                     "ratingTimeline": 5,
                     "ratingCommunication": 4,
-                    "reviewTitle": "Excellent work",
+                    "reviewTitle": "Excellent first service",
                     "reviewText": "They repaired my suspension quickly and at a fair price."
                 }
                 """;
 
-        // 1. Create review
-        mockMvc.perform(post("/api/garages/{garageId}/reviews", approvedGarage.getId())
+        String reviewJson2 = """
+                {
+                    "ratingServiceQuality": 4,
+                    "ratingPricing": 5,
+                    "ratingTimeline": 4,
+                    "ratingCommunication": 5,
+                    "reviewTitle": "Great second visit for oil change",
+                    "reviewText": "Routine maintenance done swiftly and affordably on second visit."
+                }
+                """;
+
+        // 1. Create first review
+        MvcResult res1 = mockMvc.perform(post("/api/garages/{garageId}/reviews", approvedGarage.getId())
                         .session(authorSession)
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(reviewJson))
+                        .content(reviewJson1))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").isNumber())
                 .andExpect(jsonPath("$.authorFullName").value("Review Author"))
                 .andExpect(jsonPath("$.overallRating").value(4.5))
-                .andExpect(jsonPath("$.reviewTitle").value("Excellent work"));
+                .andExpect(jsonPath("$.reviewTitle").value("Excellent first service"))
+                .andReturn();
 
-        // 2. Duplicate review attempt by same author -> 409 Conflict
-        mockMvc.perform(post("/api/garages/{garageId}/reviews", approvedGarage.getId())
+        // 2. Second review by same author succeeds with different ID
+        MvcResult res2 = mockMvc.perform(post("/api/garages/{garageId}/reviews", approvedGarage.getId())
                         .session(authorSession)
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(reviewJson))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error").value("Conflict"))
-                .andExpect(jsonPath("$.message").value("You have already reviewed this garage. One review per user per garage is enforced."));
+                        .content(reviewJson2))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").isNumber())
+                .andExpect(jsonPath("$.authorFullName").value("Review Author"))
+                .andExpect(jsonPath("$.overallRating").value(4.5))
+                .andExpect(jsonPath("$.reviewTitle").value("Great second visit for oil change"))
+                .andReturn();
+
+        Number id1 = com.jayway.jsonpath.JsonPath.read(res1.getResponse().getContentAsString(), "$.id");
+        Number id2 = com.jayway.jsonpath.JsonPath.read(res2.getResponse().getContentAsString(), "$.id");
+        assertThat(id1.longValue()).isNotEqualTo(id2.longValue());
+
+        // 3. Public GET reviews endpoint returns both published reviews with 4 category ratings & author details
+        mockMvc.perform(get("/api/garages/{garageId}/reviews", approvedGarage.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(2))
+                .andExpect(jsonPath("$.content[0].authorFullName").value("Review Author"))
+                .andExpect(jsonPath("$.content[0].ratingServiceQuality").isNumber())
+                .andExpect(jsonPath("$.content[0].ratingPricing").isNumber())
+                .andExpect(jsonPath("$.content[0].ratingTimeline").isNumber())
+                .andExpect(jsonPath("$.content[0].ratingCommunication").isNumber())
+                .andExpect(jsonPath("$.content[0].overallRating").isNumber());
     }
 
     @Test

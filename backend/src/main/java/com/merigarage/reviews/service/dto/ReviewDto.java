@@ -9,6 +9,7 @@ import java.time.LocalDateTime;
 public record ReviewDto(
         Long id,
         Long garageId,
+        Long authorUserId,
         String authorFullName,
         Byte ratingServiceQuality,
         Byte ratingPricing,
@@ -21,6 +22,24 @@ public record ReviewDto(
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {
+    public ReviewDto(
+            Long id,
+            Long garageId,
+            String authorFullName,
+            Byte ratingServiceQuality,
+            Byte ratingPricing,
+            Byte ratingTimeline,
+            Byte ratingCommunication,
+            BigDecimal overallRating,
+            String reviewTitle,
+            String reviewText,
+            ReviewResponseDto response,
+            LocalDateTime createdAt,
+            LocalDateTime updatedAt
+    ) {
+        this(id, garageId, null, authorFullName, ratingServiceQuality, ratingPricing, ratingTimeline, ratingCommunication, overallRating, reviewTitle, reviewText, response, createdAt, updatedAt);
+    }
+
     public static ReviewDto fromEntity(Review review, ReviewResponse response) {
         BigDecimal overall = review.getOverallRating();
         if (overall == null && review.getRatingServiceQuality() != null && review.getRatingPricing() != null &&
@@ -32,7 +51,8 @@ public record ReviewDto(
         return new ReviewDto(
                 review.getId(),
                 review.getGarage().getId(),
-                review.getUser().getFullName(),
+                review.getUser() != null ? review.getUser().getId() : null,
+                review.getUser() != null ? review.getUser().getFullName() : "Anonymous",
                 review.getRatingServiceQuality(),
                 review.getRatingPricing(),
                 review.getRatingTimeline(),

@@ -41,6 +41,9 @@ export const StarRating: React.FC<StarRatingProps> = ({
     }
   };
 
+  const uniqueId = React.useId().replace(/:/g, '_');
+  const gradientId = `half-grad-${uniqueId}`;
+
   const sizeClass = size === 'sm' ? 'star-sm' : size === 'lg' ? 'star-lg' : 'star-md';
 
   return (
@@ -64,12 +67,12 @@ export const StarRating: React.FC<StarRatingProps> = ({
               <svg
                 viewBox="0 0 24 24"
                 className={`star-icon ${isFilled ? 'filled' : isHalf ? 'half' : 'empty'}`}
-                fill={isFilled ? 'currentColor' : isHalf ? 'url(#half-grad)' : 'none'}
+                fill={isFilled ? 'currentColor' : isHalf ? `url(#${gradientId})` : 'none'}
                 stroke="currentColor"
                 strokeWidth="1.5"
               >
                 <defs>
-                  <linearGradient id="half-grad" x1="0" x2="100%" y1="0" y2="0">
+                  <linearGradient id={gradientId} x1="0" x2="100%" y1="0" y2="0">
                     <stop offset="50%" stopColor="currentColor" />
                     <stop offset="50%" stopColor="transparent" stopOpacity="1" />
                   </linearGradient>
@@ -83,7 +86,7 @@ export const StarRating: React.FC<StarRatingProps> = ({
 
       {showNumber && (
         <span className="rating-score font-mono">
-          {rating > 0 ? rating.toFixed(1) : 'New'}
+          {rating > 0 ? (interactive ? `${rating}/5` : rating.toFixed(1)) : (interactive ? 'Not rated' : 'New')}
         </span>
       )}
 

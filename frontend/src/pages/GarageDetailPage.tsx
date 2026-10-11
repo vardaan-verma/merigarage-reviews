@@ -15,11 +15,13 @@ import { Modal } from '../components/Modal';
 
 export const GarageDetailPage: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
-  const { isAuthenticated, hasRole, hasPermission } = useAuth();
+  const { user, isAuthenticated, hasRole, hasPermission } = useAuth();
   const navigate = useNavigate();
 
   const [garage, setGarage] = useState<GarageDetailDto | null>(null);
   const [reviewsData, setReviewsData] = useState<PagedResponse<ReviewDto> | null>(null);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [reviewsError, setReviewsError] = useState<string | null>(null);
   const [activePhotoIdx, setActivePhotoIdx] = useState<number>(0);
   const [reviewPage, setReviewPage] = useState<number>(0);
 
@@ -30,10 +32,10 @@ export const GarageDetailPage: React.FC = () => {
   // Review Modal State
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [editingReviewId, setEditingReviewId] = useState<number | null>(null);
-  const [ratingQuality, setRatingQuality] = useState(5);
-  const [ratingPricing, setRatingPricing] = useState(5);
-  const [ratingTimeline, setRatingTimeline] = useState(5);
-  const [ratingCommunication, setRatingCommunication] = useState(5);
+  const [ratingQuality, setRatingQuality] = useState(0);
+  const [ratingPricing, setRatingPricing] = useState(0);
+  const [ratingTimeline, setRatingTimeline] = useState(0);
+  const [ratingCommunication, setRatingCommunication] = useState(0);
   const [reviewTitle, setReviewTitle] = useState('');
   const [reviewText, setReviewText] = useState('');
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
@@ -74,6 +76,8 @@ export const GarageDetailPage: React.FC = () => {
   // Fetch Reviews
   const fetchReviews = useCallback(async (garageId: number, page: number) => {
     try {
+      setReviewsLoading(true);
+      setReviewsError(null);
       const res = await api.reviews.getForGarage(garageId, {
         page,
         size: 5,
@@ -81,8 +85,10 @@ export const GarageDetailPage: React.FC = () => {
         sortDir: 'desc',
       });
       setReviewsData(res);
-    } catch {
-      // Ignore background review fetch error
+    } catch (err: any) {
+      setReviewsError(err.message || 'Failed to load reviews');
+    } finally {
+      setReviewsLoading(false);
     }
   }, []);
 
@@ -104,18 +110,18 @@ export const GarageDetailPage: React.FC = () => {
     }
     if (existing) {
       setEditingReviewId(existing.id);
-      setRatingQuality(existing.ratingServiceQuality);
-      setRatingPricing(existing.ratingPricing);
-      setRatingTimeline(existing.ratingTimeline);
-      setRatingCommunication(existing.ratingCommunication);
+      setRatingQuality(existing.serviceQuality ?? existing.ratingServiceQuality ?? 0);
+      setRatingPricing(existing.pricing ?? existing.ratingPricing ?? 0);
+      setRatingTimeline(existing.timeline ?? existing.ratingTimeline ?? 0);
+      setRatingCommunication(existing.communication ?? existing.ratingCommunication ?? 0);
       setReviewTitle(existing.reviewTitle || '');
-      setReviewText(existing.reviewText);
+      setReviewText(existing.reviewText || '');
     } else {
       setEditingReviewId(null);
-      setRatingQuality(5);
-      setRatingPricing(5);
-      setRatingTimeline(5);
-      setRatingCommunication(5);
+      setRatingQuality(0);
+      setRatingPricing(0);
+      setRatingTimeline(0);
+      setRatingCommunication(0);
       setReviewTitle('');
       setReviewText('');
     }
@@ -125,9 +131,25 @@ export const GarageDetailPage: React.FC = () => {
 
   const handleReviewSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!garage) return;
+    if (!garage || reviewSubmitting) return;
 
-    if (!reviewText.trim() || reviewText.length < 10) {
+    if (!ratingQuality || ratingQuality < 1 || ratingQuality > 5) {
+      setReviewError('Please provide a rating for Service Quality (1 to 5 stars).');
+      return;
+    }
+    if (!ratingPricing || ratingPricing < 1 || ratingPricing > 5) {
+      setReviewError('Please provide a rating for Pricing (1 to 5 stars).');
+      return;
+    }
+    if (!ratingTimeline || ratingTimeline < 1 || ratingTimeline > 5) {
+      setReviewError('Please provide a rating for Timeline (1 to 5 stars).');
+      return;
+    }
+    if (!ratingCommunication || ratingCommunication < 1 || ratingCommunication > 5) {
+      setReviewError('Please provide a rating for Communication (1 to 5 stars).');
+      return;
+    }
+    if (!reviewText.trim() || reviewText.trim().length < 10) {
       setReviewError('Review content must be at least 10 characters.');
       return;
     }
@@ -137,6 +159,10 @@ export const GarageDetailPage: React.FC = () => {
       setReviewError(null);
 
       const payload: CreateReviewRequest = {
+        serviceQuality: ratingQuality,
+        pricing: ratingPricing,
+        timeline: ratingTimeline,
+        communication: ratingCommunication,
         ratingServiceQuality: ratingQuality,
         ratingPricing: ratingPricing,
         ratingTimeline: ratingTimeline,
@@ -438,6 +464,14 @@ export const GarageDetailPage: React.FC = () => {
               </button>
             </div>
 
+            {reviewsError && (
+              <Alert type="error" message={reviewsError} className="mb-4" />
+            )}
+
+            {reviewsLoading && !reviewsData && (
+              <div className="p-4 text-center text-muted text-sm">Loading reviews...</div>
+            )}
+
             {reviewsData && reviewsData.content.length > 0 ? (
               <div className="reviews-list space-y-6">
                 {reviewsData.content.map((rev) => {
@@ -455,10 +489,22 @@ export const GarageDetailPage: React.FC = () => {
                               month: 'short',
                               year: 'numeric',
                             })}
+                            {rev.updatedAt && rev.updatedAt !== rev.createdAt && (
+                              <span className="ml-2 text-xs text-muted italic">(edited)</span>
+                            )}
                           </span>
                         </div>
 
                         <div className="flex gap-2">
+                          {user && (user.id === rev.authorUserId || user.fullName === rev.authorFullName) && (
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-xs"
+                              onClick={() => handleOpenReviewModal(rev)}
+                            >
+                              ✏️ Edit
+                            </button>
+                          )}
                           {canModerate && (
                             <button
                               type="button"
@@ -474,12 +520,12 @@ export const GarageDetailPage: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* Aspect ratings */}
+                      {/* Four category ratings */}
                       <div className="grid grid-4 gap-2 text-xs text-muted bg-surface p-2 rounded mb-3">
-                        <div>Quality: <strong>{rev.ratingServiceQuality}/5</strong></div>
-                        <div>Pricing: <strong>{rev.ratingPricing}/5</strong></div>
-                        <div>Timeline: <strong>{rev.ratingTimeline}/5</strong></div>
-                        <div>Communication: <strong>{rev.ratingCommunication}/5</strong></div>
+                        <div>Service Quality: <strong>{rev.ratingServiceQuality ?? rev.serviceQuality ?? '—'}/5</strong></div>
+                        <div>Pricing: <strong>{rev.ratingPricing ?? rev.pricing ?? '—'}/5</strong></div>
+                        <div>Timeline: <strong>{rev.ratingTimeline ?? rev.timeline ?? '—'}/5</strong></div>
+                        <div>Communication: <strong>{rev.ratingCommunication ?? rev.communication ?? '—'}/5</strong></div>
                       </div>
 
                       {rev.reviewTitle && <h4 className="font-bold text-sm mb-1">{rev.reviewTitle}</h4>}
@@ -638,21 +684,64 @@ export const GarageDetailPage: React.FC = () => {
           {reviewError && <Alert type="error" message={reviewError} className="mb-4" />}
 
           <div className="grid grid-2 gap-4 mb-4">
-            <div>
-              <label className="form-label text-xs">Service Quality (1-5)</label>
-              <StarRating rating={ratingQuality} interactive={true} onChange={setRatingQuality} size="sm" />
+            <div className="form-group mb-0">
+              <div className="flex-between items-center mb-1">
+                <label className="form-label text-xs mb-0">Service Quality *</label>
+                <span className="text-xs font-semibold text-accent">
+                  {ratingQuality > 0 ? `${ratingQuality} / 5 stars` : 'Not rated'}
+                </span>
+              </div>
+              <StarRating
+                rating={ratingQuality}
+                interactive={!reviewSubmitting}
+                onChange={setRatingQuality}
+                size="md"
+              />
             </div>
-            <div>
-              <label className="form-label text-xs">Pricing Fairness (1-5)</label>
-              <StarRating rating={ratingPricing} interactive={true} onChange={setRatingPricing} size="sm" />
+
+            <div className="form-group mb-0">
+              <div className="flex-between items-center mb-1">
+                <label className="form-label text-xs mb-0">Pricing *</label>
+                <span className="text-xs font-semibold text-accent">
+                  {ratingPricing > 0 ? `${ratingPricing} / 5 stars` : 'Not rated'}
+                </span>
+              </div>
+              <StarRating
+                rating={ratingPricing}
+                interactive={!reviewSubmitting}
+                onChange={setRatingPricing}
+                size="md"
+              />
             </div>
-            <div>
-              <label className="form-label text-xs">Turnaround Timeline (1-5)</label>
-              <StarRating rating={ratingTimeline} interactive={true} onChange={setRatingTimeline} size="sm" />
+
+            <div className="form-group mb-0">
+              <div className="flex-between items-center mb-1">
+                <label className="form-label text-xs mb-0">Timeline *</label>
+                <span className="text-xs font-semibold text-accent">
+                  {ratingTimeline > 0 ? `${ratingTimeline} / 5 stars` : 'Not rated'}
+                </span>
+              </div>
+              <StarRating
+                rating={ratingTimeline}
+                interactive={!reviewSubmitting}
+                onChange={setRatingTimeline}
+                size="md"
+              />
             </div>
-            <div>
-              <label className="form-label text-xs">Communication (1-5)</label>
-              <StarRating rating={ratingCommunication} interactive={true} onChange={setRatingCommunication} size="sm" />
+
+            <div className="form-group mb-0">
+              <div className="flex-between items-center mb-1">
+                <label className="form-label text-xs mb-0">Communication *</label>
+                <span className="text-xs font-semibold text-accent">
+                  {ratingCommunication > 0 ? `${ratingCommunication} / 5 stars` : 'Not rated'}
+                </span>
+              </div>
+              <StarRating
+                rating={ratingCommunication}
+                interactive={!reviewSubmitting}
+                onChange={setRatingCommunication}
+                size="md"
+              />
             </div>
           </div>
 
@@ -667,6 +756,7 @@ export const GarageDetailPage: React.FC = () => {
               placeholder="e.g. Excellent service and honest pricing"
               value={reviewTitle}
               onChange={(e) => setReviewTitle(e.target.value)}
+              disabled={reviewSubmitting}
             />
           </div>
 
@@ -682,6 +772,7 @@ export const GarageDetailPage: React.FC = () => {
               placeholder="Describe your service experience, mechanic communication, turnaround time, etc. (min 10 characters)"
               value={reviewText}
               onChange={(e) => setReviewText(e.target.value)}
+              disabled={reviewSubmitting}
             />
           </div>
 
@@ -690,6 +781,7 @@ export const GarageDetailPage: React.FC = () => {
               type="button"
               className="btn btn-secondary"
               onClick={() => setIsReviewModalOpen(false)}
+              disabled={reviewSubmitting}
             >
               Cancel
             </button>

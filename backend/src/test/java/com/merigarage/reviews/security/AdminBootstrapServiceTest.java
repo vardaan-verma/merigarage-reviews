@@ -47,6 +47,12 @@ class AdminBootstrapServiceTest {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    @org.junit.jupiter.api.BeforeEach
+    void setUp() {
+        userPermissionRepository.deleteAll();
+        userRoleRepository.deleteAll();
+    }
+
     @Test
     void bootstrapAdmin_CreatesFirstAdmin_WithAllPermissions_AndSkipsRepeatedExecution() {
         String unique = UUID.randomUUID().toString().substring(0, 8);

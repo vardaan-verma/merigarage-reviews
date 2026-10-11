@@ -37,6 +37,7 @@ public class ReviewController {
     }
 
     @GetMapping("/api/garages/{garageId}/reviews")
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public ResponseEntity<PagedResponse<ReviewDto>> getReviewsForGarage(
             @PathVariable Long garageId,
             @RequestParam(defaultValue = "0") int page,

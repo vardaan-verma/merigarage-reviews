@@ -24,21 +24,36 @@ export const Modal: React.FC<ModalProps> = ({
       }
     };
     if (isOpen) {
+      const originalOverflow = document.body.style.overflow;
       document.body.style.overflow = 'hidden';
       window.addEventListener('keydown', handleKeyDown);
+
+      return () => {
+        document.body.style.overflow = originalOverflow;
+        window.removeEventListener('keydown', handleKeyDown);
+      };
     }
+  }, [isOpen, onClose]);
+
+  // Fallback cleanup if component unmounts while open
+  useEffect(() => {
     return () => {
       document.body.style.overflow = '';
-      window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isOpen, onClose]);
+  }, []);
 
   if (!isOpen) return null;
 
   return (
-    <div className="modal-backdrop animate-fade-in" onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div
+      className="modal-backdrop modal-overlay animate-fade-in"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-title"
+    >
       <div
-        className={`modal-dialog modal-${maxWidth}`}
+        className={`modal-dialog modal-content modal-${maxWidth}`}
         onClick={(e) => e.stopPropagation()}
         ref={modalRef}
       >
@@ -48,7 +63,7 @@ export const Modal: React.FC<ModalProps> = ({
           </h2>
           <button
             type="button"
-            className="modal-close-btn"
+            className="modal-close-btn modal-close"
             onClick={onClose}
             aria-label="Close dialog"
           >

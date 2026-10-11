@@ -118,34 +118,51 @@ class ReviewServiceTest {
     }
 
     @Test
-    void createReview_EnforcesOneReviewPerUserPerGarage_EvenIfSoftDeleted() {
+    void createReview_SupportsMultipleReviewsPerUserPerGarage_WithDistinctIds() {
         User author = createTestUser("author");
+        User otherUser = createTestUser("other");
         User creator = createTestUser("creator");
         User admin = createTestUser("admin");
         Garage garage = createTestGarage(creator);
 
-        CreateReviewRequest request = new CreateReviewRequest(
+        CreateReviewRequest request1 = new CreateReviewRequest(
                 (byte) 4, (byte) 4, (byte) 4, (byte) 4,
-                "Good experience", "Finished on time"
+                "First visit", "Finished on time for first visit"
+        );
+        CreateReviewRequest request2 = new CreateReviewRequest(
+                (byte) 5, (byte) 5, (byte) 5, (byte) 5,
+                "Second visit", "Even better service on second visit"
         );
 
-        Review review = reviewService.createReview(garage.getId(), request, author);
-        assertThat(review.getId()).isNotNull();
+        // 1. First review by user
+        Review review1 = reviewService.createReview(garage.getId(), request1, author);
+        assertThat(review1.getId()).isNotNull();
 
-        // 1. Direct duplicate attempt
-        assertThatThrownBy(() -> reviewService.createReview(garage.getId(), request, author))
-                .isInstanceOf(DuplicateResourceException.class)
-                .hasMessageContaining("already reviewed this garage");
+        // 2. Second review by SAME user for SAME garage succeeds with distinct ID
+        Review review2 = reviewService.createReview(garage.getId(), request2, author);
+        assertThat(review2.getId()).isNotNull();
+        assertThat(review2.getId()).isNotEqualTo(review1.getId());
 
-        // 2. Admin soft-deletes the review
-        reviewService.softDeleteReview(review.getId(), "Inappropriate language", admin);
-        Review deleted = reviewRepository.findById(review.getId()).orElseThrow();
+        // 3. User cannot edit another user's review
+        UpdateReviewRequest updateRequest = new UpdateReviewRequest(
+                (byte) 5, (byte) 5, (byte) 5, (byte) 5,
+                "Hacked Title", "Hacked Text"
+        );
+        assertThatThrownBy(() -> reviewService.updateReview(review1.getId(), updateRequest, otherUser))
+                .isInstanceOf(ForbiddenOperationException.class)
+                .hasMessageContaining("Only the original review author can edit this review");
+
+        // 4. Soft-deleted review remains hidden publicly while active review remains visible
+        reviewService.softDeleteReview(review1.getId(), "Inappropriate language", admin);
+        Review deleted = reviewRepository.findById(review1.getId()).orElseThrow();
         assertThat(deleted.getIsDeleted()).isTrue();
 
-        // 3. User tries to submit another review after soft-deletion -> Still rejected
-        assertThatThrownBy(() -> reviewService.createReview(garage.getId(), request, author))
-                .isInstanceOf(DuplicateResourceException.class)
-                .hasMessageContaining("already reviewed this garage");
+        org.springframework.data.domain.Page<Review> activePage = reviewService.getActiveReviewsForGarage(
+                garage.getId(), org.springframework.data.domain.PageRequest.of(0, 10)
+        );
+        assertThat(activePage.getContent()).extracting(Review::getId)
+                .contains(review2.getId())
+                .doesNotContain(review1.getId());
     }
 
     @Test
