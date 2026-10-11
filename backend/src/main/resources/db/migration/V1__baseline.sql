@@ -1,0 +1,3 @@
+-- MeriGarage Reviews — Flyway baseline
+-- V1 is an intentional empty baseline.
+-- All future business-table migrations start at V2.
