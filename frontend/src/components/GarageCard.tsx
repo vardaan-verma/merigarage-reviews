@@ -5,15 +5,23 @@ import { api } from '../api/client';
 
 interface GarageCardProps {
   garage: GarageSummaryDto;
+  isSelected?: boolean;
+  onSelect?: () => void;
 }
 
-export const GarageCard: React.FC<GarageCardProps> = ({ garage }) => {
+export const GarageCard: React.FC<GarageCardProps> = ({ garage, isSelected, onSelect }) => {
   const photoUrl = garage.coverPhotoId
     ? api.garages.getPhotoUrl(garage.id, garage.coverPhotoId)
     : null;
 
   return (
-    <article className="garage-card card animate-fade-in" id={`garage-${garage.id}`}>
+    <article
+      className={`garage-card card animate-fade-in cursor-pointer transition ${
+        isSelected ? 'border-primary ring-2 ring-primary ring-offset-2 ring-offset-bg-main shadow-lg' : ''
+      }`}
+      id={`garage-${garage.id}`}
+      onClick={onSelect}
+    >
       <div className="garage-card-media">
         {photoUrl ? (
           <img
@@ -47,6 +55,14 @@ export const GarageCard: React.FC<GarageCardProps> = ({ garage }) => {
         {garage.isVerified && (
           <span className="badge badge-verified garage-badge-floating">
             ✓ Verified
+          </span>
+        )}
+        {garage.latitude != null && garage.longitude != null && (
+          <span
+            className="badge badge-secondary text-[10px] font-mono absolute top-2 right-2 px-1.5 py-0.5 rounded shadow"
+            title={`GPS: ${Number(garage.latitude).toFixed(4)}, ${Number(garage.longitude).toFixed(4)}`}
+          >
+            📍 Map Pin
           </span>
         )}
       </div>

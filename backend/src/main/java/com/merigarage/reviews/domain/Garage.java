@@ -82,6 +82,10 @@ public class Garage {
     @Column(name = "website_url", length = 255)
     private String websiteUrl;
 
+    @Size(max = 500)
+    @Column(name = "google_maps_url", length = 500)
+    private String googleMapsUrl;
+
     @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "approval_status", nullable = false, length = 30)
@@ -245,6 +249,14 @@ public class Garage {
 
     public void setWebsiteUrl(String websiteUrl) {
         this.websiteUrl = websiteUrl;
+    }
+
+    public String getGoogleMapsUrl() {
+        return googleMapsUrl;
+    }
+
+    public void setGoogleMapsUrl(String googleMapsUrl) {
+        this.googleMapsUrl = googleMapsUrl;
     }
 
     public GarageApprovalStatus getApprovalStatus() {

@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
 import type { GarageSummaryDto, PagedResponse } from '../api/types';
 import { GarageCard } from '../components/GarageCard';
+import { GarageSearchMap } from '../components/GarageSearchMap';
 import { Pagination } from '../components/Pagination';
 import { Alert } from '../components/Alert';
 
@@ -24,6 +25,7 @@ export const GaragesPage: React.FC = () => {
 
   // Data state
   const [garagesData, setGaragesData] = useState<PagedResponse<GarageSummaryDto> | null>(null);
+  const [selectedGarageId, setSelectedGarageId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -55,6 +57,18 @@ export const GaragesPage: React.FC = () => {
   useEffect(() => {
     fetchGarages();
   }, [fetchGarages]);
+
+  // Sync selected garage when search results change
+  useEffect(() => {
+    if (garagesData?.content && garagesData.content.length > 0) {
+      if (!selectedGarageId || !garagesData.content.some((g) => g.id === selectedGarageId)) {
+        const firstWithCoords = garagesData.content.find((g) => g.latitude != null && g.longitude != null);
+        setSelectedGarageId(firstWithCoords ? firstWithCoords.id : garagesData.content[0].id);
+      }
+    } else {
+      setSelectedGarageId(null);
+    }
+  }, [garagesData, selectedGarageId]);
 
   // Keep local inputs in sync with URL
   useEffect(() => {
@@ -181,43 +195,67 @@ export const GaragesPage: React.FC = () => {
 
       {error && <Alert type="error" message={error} className="mb-6" />}
 
-      {/* Results grid */}
-      {loading ? (
-        <div className="center-loader py-12">
-          <div className="spinner"></div>
-          <p className="text-muted mt-2">Fetching garages matching criteria...</p>
-        </div>
-      ) : garagesData && garagesData.content.length > 0 ? (
-        <>
-          <div className="garage-grid mb-8">
-            {garagesData.content.map((garage) => (
-              <GarageCard key={garage.id} garage={garage} />
-            ))}
-          </div>
+      {/* Side-by-Side Results & Map */}
+      <div className="garages-layout mb-8">
+        {/* Left Column: Garage Cards & Pagination */}
+        <div className="garages-list-col">
+          {loading ? (
+            <div className="center-loader py-12">
+              <div className="spinner"></div>
+              <p className="text-muted mt-2">Fetching garages matching criteria...</p>
+            </div>
+          ) : garagesData && garagesData.content.length > 0 ? (
+            <>
+              <div className="garage-grid mb-8">
+                {garagesData.content.map((garage) => (
+                  <GarageCard
+                    key={garage.id}
+                    garage={garage}
+                    isSelected={selectedGarageId === garage.id}
+                    onSelect={() => setSelectedGarageId(garage.id)}
+                  />
+                ))}
+              </div>
 
-          <Pagination
-            page={garagesData.page}
-            totalPages={garagesData.totalPages}
-            totalElements={garagesData.totalElements}
-            onPageChange={handlePageChange}
-          />
-        </>
-      ) : (
-        <div className="card p-12 text-center empty-state">
-          <div className="text-4xl mb-3">🔍</div>
-          <h3 className="text-lg font-bold">No garages matched your filters</h3>
-          <p className="text-secondary text-sm mt-1 max-w-md mx-auto">
-            Try adjusting your search criteria, clearing city filters, or removing the verified requirement.
-          </p>
-          <button
-            type="button"
-            className="btn btn-secondary mt-4"
-            onClick={handleResetFilters}
-          >
-            Clear All Filters
-          </button>
+              <Pagination
+                page={garagesData.page}
+                totalPages={garagesData.totalPages}
+                totalElements={garagesData.totalElements}
+                onPageChange={handlePageChange}
+              />
+            </>
+          ) : (
+            <div className="card p-12 text-center empty-state">
+              <div className="text-4xl mb-3">🔍</div>
+              <h3 className="text-lg font-bold">No garages matched your filters</h3>
+              <p className="text-secondary text-sm mt-1 max-w-md mx-auto">
+                Try adjusting your search criteria, clearing city filters, or removing the verified requirement.
+              </p>
+              <button
+                type="button"
+                className="btn btn-secondary mt-4"
+                onClick={handleResetFilters}
+              >
+                Clear All Filters
+              </button>
+            </div>
+          )}
         </div>
-      )}
+
+        {/* Right Column: Dynamic Interactive Map */}
+        <div className="garages-map-col" style={{ position: 'sticky', top: '5.5rem' }}>
+          <GarageSearchMap
+            garages={garagesData?.content || []}
+            selectedGarageId={selectedGarageId}
+            onSelectGarage={(id) => {
+              setSelectedGarageId(id);
+              const el = document.getElementById(`garage-${id}`);
+              el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }}
+            loading={loading}
+          />
+        </div>
+      </div>
     </div>
   );
 };

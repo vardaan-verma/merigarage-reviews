@@ -50,6 +50,9 @@ export interface GarageSummaryDto {
   phoneNumber: string;
   isVerified: boolean;
   coverPhotoId?: number | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  googleMapsUrl?: string | null;
 }
 
 export interface GaragePhotoDto {
@@ -81,12 +84,15 @@ export interface GarageDetailDto {
   phoneNumber: string;
   email?: string | null;
   websiteUrl?: string | null;
+  googleMapsUrl?: string | null;
   latitude?: number | null;
   longitude?: number | null;
   isVerified: boolean;
   coverPhotoId?: number | null;
   photos: GaragePhotoDto[];
   services: GarageServiceDto[];
+  hasOwner?: boolean;
+  ownerId?: number | null;
 }
 
 export interface GarageDocumentDto {
@@ -125,6 +131,7 @@ export interface GarageClaimDto {
   id: number;
   garageId: number;
   garageName: string;
+  garageSlug?: string | null;
   claimantUserId: number;
   claimantEmail: string;
   claimMessage: string;
@@ -198,6 +205,7 @@ export interface CreateGarageRequest {
   phoneNumber: string;
   email?: string;
   websiteUrl?: string;
+  googleMapsUrl?: string;
   latitude?: number;
   longitude?: number;
 }

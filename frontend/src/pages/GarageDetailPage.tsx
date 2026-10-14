@@ -338,16 +338,22 @@ export const GarageDetailPage: React.FC = () => {
               ✍️ Write a Review
             </button>
 
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={handleOpenClaimModal}
-              title="Are you the owner of this workshop? Claim ownership."
-            >
-              Claim Listing
-            </button>
+            {!garage.hasOwner ? (
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={handleOpenClaimModal}
+                title="Are you the owner of this workshop? Claim ownership."
+              >
+                Claim Listing
+              </button>
+            ) : (
+              <span className="badge badge-success text-xs" title="This workshop has a verified owner">
+                ✓ Claimed
+              </span>
+            )}
 
-            {isOwner && (
+            {((user && garage.ownerId && user.id === garage.ownerId) || (isOwner && (!garage.hasOwner || user?.id === garage.ownerId))) && (
               <Link to={`/owner?slug=${garage.slug}`} className="btn btn-outline btn-sm">
                 ⚙️ Manage Workshop
               </Link>
@@ -659,6 +665,48 @@ export const GarageDetailPage: React.FC = () => {
                   </a>
                 </div>
               )}
+            </div>
+          </div>
+
+          {/* Location & Map Card */}
+          <div className="card p-6 mb-6">
+            <h3 className="section-title text-base mb-3">Location & Directions</h3>
+            <div className="location-map-wrapper mb-3 rounded overflow-hidden border border-border" style={{ height: '220px', background: 'var(--bg-surface)' }}>
+              <iframe
+                title={`Map for ${garage.name}`}
+                width="100%"
+                height="220"
+                style={{ border: 0, display: 'block' }}
+                loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+                src={`https://maps.google.com/maps?q=${encodeURIComponent(
+                  garage.latitude && garage.longitude
+                    ? `${garage.latitude},${garage.longitude}`
+                    : garage.googleMapsUrl && !garage.googleMapsUrl.includes('goo.gl')
+                    ? garage.googleMapsUrl
+                    : `${garage.name}, ${garage.addressLine1}, ${garage.city}`
+                )}&t=&z=14&ie=UTF8&iwloc=&output=embed`}
+              />
+            </div>
+            <div className="flex-between items-center text-xs gap-2 flex-wrap">
+              <span className="text-muted font-mono">
+                {garage.latitude && garage.longitude
+                  ? `📍 ${Number(garage.latitude).toFixed(4)}, ${Number(garage.longitude).toFixed(4)}`
+                  : `📍 ${garage.city}`}
+              </span>
+              <a
+                href={
+                  garage.googleMapsUrl ||
+                  (garage.latitude && garage.longitude
+                    ? `https://www.google.com/maps/search/?api=1&query=${garage.latitude},${garage.longitude}`
+                    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${garage.name} ${garage.city}`)}`)
+                }
+                target="_blank"
+                rel="noreferrer noopener"
+                className="btn btn-secondary btn-xs"
+              >
+                Open in Google Maps ↗
+              </a>
             </div>
           </div>
 

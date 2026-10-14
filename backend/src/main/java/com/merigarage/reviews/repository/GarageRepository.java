@@ -19,6 +19,11 @@ public interface GarageRepository extends JpaRepository<Garage, Long> {
     @Query("SELECT g FROM Garage g WHERE g.id = :id")
     Optional<Garage> findByIdForUpdate(@Param("id") Long id);
 
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = {"owner", "createdBy"})
+    @Override
+    Optional<Garage> findById(Long id);
+
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = {"owner", "createdBy"})
     Optional<Garage> findBySlug(String slug);
 
     boolean existsBySlug(String slug);

@@ -36,15 +36,18 @@ public class AuthController {
     private final AuthenticationManager authenticationManager;
     private final SecurityContextRepository securityContextRepository;
     private final SecurityContextService securityContextService;
+    private final com.merigarage.reviews.security.CustomUserDetailsService customUserDetailsService;
 
     public AuthController(UserService userService,
                           AuthenticationManager authenticationManager,
                           SecurityContextRepository securityContextRepository,
-                          SecurityContextService securityContextService) {
+                          SecurityContextService securityContextService,
+                          com.merigarage.reviews.security.CustomUserDetailsService customUserDetailsService) {
         this.userService = userService;
         this.authenticationManager = authenticationManager;
         this.securityContextRepository = securityContextRepository;
         this.securityContextService = securityContextService;
+        this.customUserDetailsService = customUserDetailsService;
     }
 
     @PostMapping("/register")
@@ -96,9 +99,26 @@ public class AuthController {
     }
 
     @GetMapping("/me")
-    public ResponseEntity<?> me() {
+    public ResponseEntity<?> me(HttpServletRequest httpRequest, HttpServletResponse httpResponse) {
         return securityContextService.getCurrentPrincipal()
-                .map(principal -> ResponseEntity.ok(UserDto.fromPrincipal(principal)))
+                .map(principal -> {
+                    try {
+                        UserPrincipal freshPrincipal = (UserPrincipal) customUserDetailsService.loadUserByUsername(principal.getEmail());
+                        Authentication newAuth = new UsernamePasswordAuthenticationToken(
+                                freshPrincipal,
+                                null,
+                                freshPrincipal.getAuthorities()
+                        );
+                        SecurityContext context = SecurityContextHolder.createEmptyContext();
+                        context.setAuthentication(newAuth);
+                        SecurityContextHolder.setContext(context);
+                        securityContextRepository.saveContext(context, httpRequest, httpResponse);
+
+                        return ResponseEntity.ok(UserDto.fromPrincipal(freshPrincipal));
+                    } catch (Exception ex) {
+                        return ResponseEntity.ok(UserDto.fromPrincipal(principal));
+                    }
+                })
                 .orElseGet(() -> ResponseEntity.status(HttpStatus.UNAUTHORIZED).build());
     }
 

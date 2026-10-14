@@ -15,6 +15,7 @@ public record CreateGarageRequest(
         @NotBlank @Size(max = 20) String phoneNumber,
         @Size(max = 255) String email,
         @Size(max = 255) String websiteUrl,
+        @Size(max = 500) String googleMapsUrl,
         BigDecimal latitude,
         BigDecimal longitude
 ) {}

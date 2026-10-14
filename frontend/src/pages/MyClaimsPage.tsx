@@ -3,26 +3,32 @@ import { Link } from 'react-router-dom';
 import { api } from '../api/client';
 import type { GarageClaimDto } from '../api/types';
 import { Alert } from '../components/Alert';
+import { useAuth } from '../context/AuthContext';
 
 export const MyClaimsPage: React.FC = () => {
+  const { refreshUser } = useAuth();
   const [claims, setClaims] = useState<GarageClaimDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function loadClaims() {
-      try {
-        setLoading(true);
-        const data = await api.claims.getMyClaims();
-        setClaims(data || []);
-      } catch (err: any) {
-        setError(err.message || 'Failed to fetch ownership claims');
-      } finally {
-        setLoading(false);
-      }
+  const loadClaims = React.useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await api.claims.getMyClaims();
+      setClaims(data || []);
+      // Refresh user role in session so that any newly approved claim updates ROLE_GARAGE_OWNER immediately
+      await refreshUser().catch(() => {});
+    } catch (err: any) {
+      setError(err.message || 'Failed to fetch ownership claims');
+    } finally {
+      setLoading(false);
     }
+  }, [refreshUser]);
+
+  useEffect(() => {
     loadClaims();
-  }, []);
+  }, [loadClaims]);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -45,12 +51,24 @@ export const MyClaimsPage: React.FC = () => {
             Track status and administrator review notes on your garage claim submissions.
           </p>
         </div>
-        <Link to="/garages" className="btn btn-secondary btn-sm">
-          Browse Garages
-        </Link>
+        <div className="flex gap-2">
+          <button type="button" onClick={loadClaims} className="btn btn-secondary btn-sm" disabled={loading}>
+            ↻ Refresh
+          </button>
+          <Link to="/garages" className="btn btn-secondary btn-sm">
+            Browse Garages
+          </Link>
+        </div>
       </div>
 
-      {error && <Alert type="error" message={error} className="mb-6" />}
+      {error && (
+        <div className="card p-6 border-danger mb-6 text-center">
+          <Alert type="error" message={error} className="mb-4 text-left" />
+          <button type="button" onClick={loadClaims} className="btn btn-primary btn-sm">
+            Retry Loading Claims
+          </button>
+        </div>
+      )}
 
       {loading ? (
         <div className="center-loader py-12">
@@ -88,7 +106,18 @@ export const MyClaimsPage: React.FC = () => {
                     })}
                   </span>
                 </div>
-                <div>{getStatusBadge(claim.claimStatus)}</div>
+                <div className="flex items-center gap-2">
+                  {getStatusBadge(claim.claimStatus)}
+                  {claim.claimStatus === 'APPROVED' && (
+                    <Link
+                      to={claim.garageSlug ? `/owner?slug=${claim.garageSlug}` : '/owner'}
+                      className="btn btn-outline btn-xs"
+                      title="Manage this workshop in Owner Hub"
+                    >
+                      ⚙️ Manage Workshop
+                    </Link>
+                  )}
+                </div>
               </div>
 
               <div className="text-xs text-secondary bg-surface-raised p-4 rounded mb-3">

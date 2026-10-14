@@ -18,14 +18,19 @@ public record GarageDetailDto(
         String phoneNumber,
         String email,
         String websiteUrl,
+        String googleMapsUrl,
         BigDecimal latitude,
         BigDecimal longitude,
         Boolean isVerified,
         Long coverPhotoId,
         List<GaragePhotoDto> photos,
-        List<GarageServiceDto> services
+        List<GarageServiceDto> services,
+        Boolean hasOwner,
+        Long ownerId
 ) {
     public static GarageDetailDto fromEntity(Garage garage, Long coverPhotoId, List<GaragePhotoDto> photos, List<GarageServiceDto> services) {
+        boolean hasOwner = garage.getOwner() != null;
+        Long ownerId = hasOwner ? garage.getOwner().getId() : null;
         return new GarageDetailDto(
                 garage.getId(),
                 garage.getName(),
@@ -39,12 +44,15 @@ public record GarageDetailDto(
                 garage.getPhoneNumber(),
                 garage.getEmail(),
                 garage.getWebsiteUrl(),
+                garage.getGoogleMapsUrl(),
                 garage.getLatitude(),
                 garage.getLongitude(),
                 garage.getIsVerified(),
                 coverPhotoId,
                 photos,
-                services
+                services,
+                hasOwner,
+                ownerId
         );
     }
 }

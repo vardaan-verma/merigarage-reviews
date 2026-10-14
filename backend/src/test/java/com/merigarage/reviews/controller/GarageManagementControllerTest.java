@@ -304,4 +304,46 @@ class GarageManagementControllerTest {
                 .andExpect(jsonPath("$.verificationStatus").value("PENDING"))
                 .andExpect(jsonPath("$.storageKey").doesNotExist()); // Storage key must not be returned
     }
+
+    @Test
+    void uploadPhoto_CreatorWithoutOwnerRole_Success_AndNonCreatorRejected() throws Exception {
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        String creatorEmail = "creator." + suffix + "@test.com";
+        User creator = userService.registerUser(new RegisterUserRequest(creatorEmail, PASSWORD, "Garage Creator", "9876543212"));
+
+        // Create garage where owner is null (pending unowned listing)
+        Garage pendingGarage = garageService.createGarage(new CreateGarageRequest(
+                "Creator Garage " + suffix, "Created by regular user", "12 Main St", null,
+                "Jaipur", "Rajasthan", "302001", "9876543212",
+                "creator." + suffix + "@test.com", null, null, null
+        ), creator);
+
+        assertThat(pendingGarage.getOwner()).isNull();
+        assertThat(pendingGarage.getCreatedBy().getId()).isEqualTo(creator.getId());
+
+        MockHttpSession creatorSession = login(creatorEmail);
+        MockMultipartFile validPhoto = new MockMultipartFile(
+                "file", "creator_shop.jpg", "image/jpeg", "image bytes".getBytes()
+        );
+
+        // Creator should be authorized to upload photos during the listing flow
+        mockMvc.perform(multipart("/api/garages/{id}/photos", pendingGarage.getId())
+                        .file(validPhoto)
+                        .param("caption", "Shop Front")
+                        .param("isCover", "true")
+                        .session(creatorSession)
+                        .with(csrf()))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.caption").value("Shop Front"))
+                .andExpect(jsonPath("$.isCover").value(true));
+
+        // Third-party user who is neither owner nor creator must be rejected with 403 Forbidden
+        MockHttpSession otherSession = login(otherUserEmail);
+        mockMvc.perform(multipart("/api/garages/{id}/photos", pendingGarage.getId())
+                        .file(validPhoto)
+                        .session(otherSession)
+                        .with(csrf()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("Forbidden"));
+    }
 }

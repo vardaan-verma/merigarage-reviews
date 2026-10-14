@@ -207,6 +207,9 @@ export const api = {
 
   // Garage Management (Owner & Authenticated)
   garageManagement: {
+    getMyGarages: (): Promise<GarageSummaryDto[]> =>
+      request<GarageSummaryDto[]>('/api/garages/my-garages'),
+
     createListing: (data: CreateGarageRequest): Promise<GarageSummaryDto> =>
       request<GarageSummaryDto>('/api/garages', {
         method: 'POST',

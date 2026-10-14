@@ -1,8 +1,10 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { api } from '../api/client';
+import { useAuth } from '../context/AuthContext';
 import type {
   GarageDetailDto,
+  GarageSummaryDto,
   GaragePhotoDto,
   GarageDocumentDto,
   GarageProfileEditDto,
@@ -14,9 +16,11 @@ import type {
 import { Alert } from '../components/Alert';
 
 export const OwnerDashboardPage: React.FC = () => {
+  const { user, isAdmin, refreshUser } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const slugParam = searchParams.get('slug') || '';
 
+  const [myGarages, setMyGarages] = useState<GarageSummaryDto[]>([]);
   const [garageInput, setGarageInput] = useState(slugParam);
   const [activeGarage, setActiveGarage] = useState<GarageDetailDto | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'edits' | 'photos' | 'documents' | 'services'>('overview');
@@ -97,7 +101,22 @@ export const OwnerDashboardPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    refreshUser().catch(() => {});
+    api.garageManagement
+      .getMyGarages()
+      .then((garages) => {
+        setMyGarages(garages || []);
+        if (!slugParam && garages && garages.length > 0) {
+          setGarageInput(garages[0].slug);
+          setSearchParams({ slug: garages[0].slug });
+        }
+      })
+      .catch(() => {});
+  }, [slugParam, setSearchParams, refreshUser]);
+
+  useEffect(() => {
     if (slugParam) {
+      setGarageInput(slugParam);
       loadGarage(slugParam);
     }
   }, [slugParam, loadGarage]);
@@ -251,8 +270,31 @@ export const OwnerDashboardPage: React.FC = () => {
         </p>
       </div>
 
-      {/* Workshop Slug Selector */}
+      {/* Workshop Slug Selector & Quick Select */}
       <div className="card p-4 mb-6">
+        {myGarages.length > 0 && (
+          <div className="mb-4 pb-3 border-b border-border">
+            <span className="text-xs font-semibold text-secondary block mb-2">
+              Your Registered Workshops:
+            </span>
+            <div className="flex gap-2 flex-wrap">
+              {myGarages.map((g) => (
+                <button
+                  key={g.id}
+                  type="button"
+                  className={`btn btn-xs ${activeGarage?.slug === g.slug ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => {
+                    setGarageInput(g.slug);
+                    setSearchParams({ slug: g.slug });
+                  }}
+                >
+                  🛠️ {g.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <form onSubmit={handleLookupSubmit} className="flex gap-3 items-center flex-wrap">
           <label htmlFor="garage-slug-input" className="text-sm font-semibold whitespace-nowrap">
             Workshop Identifier (Slug):
@@ -318,7 +360,25 @@ export const OwnerDashboardPage: React.FC = () => {
             </Link>
           </div>
 
-          {/* Navigation Tabs */}
+          {!isAdmin && activeGarage.hasOwner && activeGarage.ownerId && user?.id !== activeGarage.ownerId ? (
+            <div className="card p-8 text-center bg-surface-raised mb-6">
+              <h3 className="text-lg font-bold text-danger mb-2">Access Restricted (403)</h3>
+              <p className="text-secondary text-sm mb-4">
+                You are not the authorized owner of <strong>{activeGarage.name}</strong>. Workshop management tools are strictly reserved for the verified owner.
+              </p>
+              {myGarages.length > 0 && (
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={() => setSearchParams({ slug: myGarages[0].slug })}
+                >
+                  Switch to Your Workshop ({myGarages[0].name})
+                </button>
+              )}
+            </div>
+          ) : (
+            <>
+              {/* Navigation Tabs */}
           <div className="tabs mb-6 flex border-b border-border overflow-x-auto">
             <button
               type="button"
@@ -791,8 +851,10 @@ export const OwnerDashboardPage: React.FC = () => {
               </div>
             </div>
           )}
-        </div>
-      ) : (
+        </>
+      )}
+    </div>
+  ) : (
         <div className="card p-12 text-center empty-state">
           <div className="text-3xl mb-2">🔧</div>
           <h3 className="text-base font-bold">Select a Workshop to Manage</h3>

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import type {
@@ -13,48 +13,55 @@ import { Alert } from '../components/Alert';
 import { Modal } from '../components/Modal';
 
 export const AdminDashboardPage: React.FC = () => {
-  const { hasRole, hasPermission } = useAuth();
+  const { user, hasRole, hasPermission } = useAuth();
 
   const isAdmin = hasRole('ROLE_ADMIN');
-  const canApproveGarages = isAdmin || hasPermission('GARAGE_APPROVAL');
-  const canManageClaims = isAdmin || hasPermission('CLAIM_MANAGEMENT');
-  const canReviewDocs = isAdmin || hasPermission('VERIFICATION_REVIEW');
-  const canModerateContent = isAdmin || hasPermission('CONTENT_MODERATION');
+  const hasExplicitPerms = !!(user?.permissions && user.permissions.length > 0);
+  const canApproveGarages = hasPermission('GARAGE_APPROVAL') || (isAdmin && !hasExplicitPerms);
+  const canManageClaims = hasPermission('CLAIM_MANAGEMENT') || (isAdmin && !hasExplicitPerms);
+  const canReviewDocs = hasPermission('VERIFICATION_REVIEW') || (isAdmin && !hasExplicitPerms);
+  const canModerateContent = hasPermission('CONTENT_MODERATION') || (isAdmin && !hasExplicitPerms);
 
   // Active Tab
   const [activeTab, setActiveTab] = useState<'garages' | 'edits' | 'claims' | 'documents' | 'moderation' | 'services'>(
     canApproveGarages ? 'garages' : canManageClaims ? 'claims' : canReviewDocs ? 'documents' : 'moderation'
   );
 
-  // Global feedback
+  // Global feedback (for top-level actions / success)
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [globalSuccess, setGlobalSuccess] = useState<string | null>(null);
 
   // Tab 1: Pending Garages
   const [pendingGarages, setPendingGarages] = useState<GarageSummaryDto[]>([]);
   const [loadingGarages, setLoadingGarages] = useState(false);
+  const [garagesError, setGaragesError] = useState<string | null>(null);
 
   // Tab 2: Pending Edits
   const [pendingEdits, setPendingEdits] = useState<GarageProfileEditDto[]>([]);
   const [loadingEdits, setLoadingEdits] = useState(false);
+  const [editsError, setEditsError] = useState<string | null>(null);
 
   // Tab 3: Pending Claims
   const [pendingClaims, setPendingClaims] = useState<GarageClaimDto[]>([]);
   const [loadingClaims, setLoadingClaims] = useState(false);
+  const [claimsError, setClaimsError] = useState<string | null>(null);
 
   // Tab 4: Verification Documents
   const [docGarageIdInput, setDocGarageIdInput] = useState('');
   const [loadedDocs, setLoadedDocs] = useState<GarageDocumentDto[]>([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
+  const [docsError, setDocsError] = useState<string | null>(null);
 
   // Tab 5: Content Moderation
   const [modReviewId, setModReviewId] = useState('');
   const [modReason, setModReason] = useState('');
   const [modSubmitting, setModSubmitting] = useState(false);
+  const [moderationError, setModerationError] = useState<string | null>(null);
 
   // Tab 6: Master Services
   const [services, setServices] = useState<ServiceDto[]>([]);
   const [loadingServices, setLoadingServices] = useState(false);
+  const [servicesError, setServicesError] = useState<string | null>(null);
   const [newServiceName, setNewServiceName] = useState('');
   const [newServiceCategory, setNewServiceCategory] = useState<ServiceCategory>('PERIODIC_MAINTENANCE');
   const [newServiceDesc, setNewServiceDesc] = useState('');
@@ -66,18 +73,20 @@ export const AdminDashboardPage: React.FC = () => {
   const [actionDescription, setActionDescription] = useState('');
   const [actionNotes, setActionNotes] = useState('');
   const [actionRequiredNotes, setActionRequiredNotes] = useState(false);
-  const [actionExecute, setActionExecute] = useState<(() => Promise<void>) | null>(null);
   const [actionSubmitting, setActionSubmitting] = useState(false);
+  const [modalError, setModalError] = useState<string | null>(null);
+  const onConfirmRef = useRef<((notes: string) => Promise<void>) | null>(null);
 
   // Fetch pending garages
   const fetchPendingGarages = useCallback(async () => {
     if (!canApproveGarages) return;
     try {
       setLoadingGarages(true);
+      setGaragesError(null);
       const data = await api.admin.getPendingGarages();
       setPendingGarages(data || []);
     } catch (err: any) {
-      setGlobalError(err.message || 'Failed to load pending garages');
+      setGaragesError(err.message || 'Failed to load pending garages');
     } finally {
       setLoadingGarages(false);
     }
@@ -88,10 +97,11 @@ export const AdminDashboardPage: React.FC = () => {
     if (!canApproveGarages) return;
     try {
       setLoadingEdits(true);
+      setEditsError(null);
       const data = await api.admin.getPendingProfileEdits();
       setPendingEdits(data || []);
     } catch (err: any) {
-      setGlobalError(err.message || 'Failed to load pending profile edits');
+      setEditsError(err.message || 'Failed to load pending profile edits');
     } finally {
       setLoadingEdits(false);
     }
@@ -102,10 +112,11 @@ export const AdminDashboardPage: React.FC = () => {
     if (!canManageClaims) return;
     try {
       setLoadingClaims(true);
+      setClaimsError(null);
       const data = await api.admin.getPendingClaims();
       setPendingClaims(data || []);
     } catch (err: any) {
-      setGlobalError(err.message || 'Failed to load pending claims');
+      setClaimsError(err.message || 'Failed to load pending claims');
     } finally {
       setLoadingClaims(false);
     }
@@ -116,10 +127,11 @@ export const AdminDashboardPage: React.FC = () => {
     if (!isAdmin) return;
     try {
       setLoadingServices(true);
+      setServicesError(null);
       const data = await api.services.list();
       setServices(data || []);
     } catch (err: any) {
-      setGlobalError(err.message || 'Failed to load services catalogue');
+      setServicesError(err.message || 'Failed to load services catalogue');
     } finally {
       setLoadingServices(false);
     }
@@ -139,31 +151,31 @@ export const AdminDashboardPage: React.FC = () => {
     requireNotes: boolean,
     onConfirm: (notes: string) => Promise<void>
   ) => {
+    onConfirmRef.current = onConfirm;
     setActionTitle(title);
     setActionDescription(description);
     setActionRequiredNotes(requireNotes);
     setActionNotes('');
-    setActionExecute(() => async () => {
-      await onConfirm(actionNotes.trim());
-    });
+    setModalError(null);
     setActionModalOpen(true);
   };
 
   const handleConfirmAction = async () => {
     if (actionRequiredNotes && !actionNotes.trim()) {
-      alert('Please provide decision notes.');
+      setModalError('Please provide decision notes.');
       return;
     }
-    if (!actionExecute) return;
+    if (!onConfirmRef.current) return;
 
     try {
       setActionSubmitting(true);
+      setModalError(null);
       setGlobalError(null);
-      await actionExecute();
+      await onConfirmRef.current(actionNotes.trim());
       setActionModalOpen(false);
       setGlobalSuccess('Administrative decision processed successfully.');
     } catch (err: any) {
-      setGlobalError(err.message || 'Action failed.');
+      setModalError(err.message || 'Action failed.');
     } finally {
       setActionSubmitting(false);
     }
@@ -255,18 +267,18 @@ export const AdminDashboardPage: React.FC = () => {
   };
 
   // Document Review Actions
-  const handleLoadGarageDocs = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleLoadGarageDocs = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     const gId = parseInt(docGarageIdInput.trim(), 10);
     if (!gId) return;
 
     try {
       setLoadingDocs(true);
-      setGlobalError(null);
+      setDocsError(null);
       const docs = await api.admin.getDocumentsForGarage(gId);
       setLoadedDocs(docs || []);
     } catch (err: any) {
-      setGlobalError(err.message || 'Failed to load garage verification documents');
+      setDocsError(err.message || 'Failed to load garage verification documents');
     } finally {
       setLoadingDocs(false);
     }
@@ -284,7 +296,7 @@ export const AdminDashboardPage: React.FC = () => {
         setLoadedDocs(docs || []);
       }
     } catch (err: any) {
-      setGlobalError(err.message || 'Failed to update document status');
+      setDocsError(err.message || 'Failed to update document status');
     }
   };
 
@@ -296,12 +308,13 @@ export const AdminDashboardPage: React.FC = () => {
 
     try {
       setModSubmitting(true);
+      setModerationError(null);
       await api.admin.softDeleteReview(revId, modReason.trim());
       setGlobalSuccess(`Review #${revId} was successfully soft-deleted.`);
       setModReviewId('');
       setModReason('');
     } catch (err: any) {
-      setGlobalError(err.message || 'Moderation action failed');
+      setModerationError(err.message || 'Moderation action failed');
     } finally {
       setModSubmitting(false);
     }
@@ -370,7 +383,7 @@ export const AdminDashboardPage: React.FC = () => {
             }`}
             onClick={() => setActiveTab('garages')}
           >
-            Pending Garages ({pendingGarages.length})
+            Pending Garages {garagesError ? '(!)' : `(${pendingGarages.length})`}
           </button>
         )}
 
@@ -382,7 +395,7 @@ export const AdminDashboardPage: React.FC = () => {
             }`}
             onClick={() => setActiveTab('edits')}
           >
-            Profile Edits ({pendingEdits.length})
+            Profile Edits {editsError ? '(!)' : `(${pendingEdits.length})`}
           </button>
         )}
 
@@ -394,7 +407,7 @@ export const AdminDashboardPage: React.FC = () => {
             }`}
             onClick={() => setActiveTab('claims')}
           >
-            Ownership Claims ({pendingClaims.length})
+            Ownership Claims {claimsError ? '(!)' : `(${pendingClaims.length})`}
           </button>
         )}
 
@@ -406,7 +419,7 @@ export const AdminDashboardPage: React.FC = () => {
             }`}
             onClick={() => setActiveTab('documents')}
           >
-            Document Verification
+            Document Verification {docsError ? '(!)' : ''}
           </button>
         )}
 
@@ -418,7 +431,7 @@ export const AdminDashboardPage: React.FC = () => {
             }`}
             onClick={() => setActiveTab('moderation')}
           >
-            Review Moderation
+            Review Moderation {moderationError ? '(!)' : ''}
           </button>
         )}
 
@@ -430,7 +443,7 @@ export const AdminDashboardPage: React.FC = () => {
             }`}
             onClick={() => setActiveTab('services')}
           >
-            Master Services ({services.length})
+            Master Services {servicesError ? '(!)' : `(${services.length})`}
           </button>
         )}
       </div>
@@ -445,11 +458,20 @@ export const AdminDashboardPage: React.FC = () => {
             </button>
           </div>
 
+          {garagesError && (
+            <div className="mb-4 p-4 border border-danger/30 rounded bg-danger/5">
+              <Alert type="error" message={garagesError} className="mb-3" />
+              <button type="button" className="btn btn-primary btn-xs" onClick={fetchPendingGarages}>
+                Retry Loading Pending Garages
+              </button>
+            </div>
+          )}
+
           {loadingGarages ? (
             <div className="center-loader py-8">
               <div className="spinner"></div>
             </div>
-          ) : pendingGarages.length === 0 ? (
+          ) : !garagesError && pendingGarages.length === 0 ? (
             <p className="text-xs text-muted text-center py-8">
               No pending garage submissions awaiting review. Queue is clear!
             </p>
@@ -525,11 +547,20 @@ export const AdminDashboardPage: React.FC = () => {
             </button>
           </div>
 
+          {editsError && (
+            <div className="mb-4 p-4 border border-danger/30 rounded bg-danger/5">
+              <Alert type="error" message={editsError} className="mb-3" />
+              <button type="button" className="btn btn-primary btn-xs" onClick={fetchPendingEdits}>
+                Retry Loading Profile Edits
+              </button>
+            </div>
+          )}
+
           {loadingEdits ? (
             <div className="center-loader py-8">
               <div className="spinner"></div>
             </div>
-          ) : pendingEdits.length === 0 ? (
+          ) : !editsError && pendingEdits.length === 0 ? (
             <p className="text-xs text-muted text-center py-8">
               No pending profile edits to review.
             </p>
@@ -601,11 +632,20 @@ export const AdminDashboardPage: React.FC = () => {
             </button>
           </div>
 
+          {claimsError && (
+            <div className="mb-4 p-4 border border-danger/30 rounded bg-danger/5">
+              <Alert type="error" message={claimsError} className="mb-3" />
+              <button type="button" className="btn btn-primary btn-xs" onClick={fetchPendingClaims}>
+                Retry Loading Claims Queue
+              </button>
+            </div>
+          )}
+
           {loadingClaims ? (
             <div className="center-loader py-8">
               <div className="spinner"></div>
             </div>
-          ) : pendingClaims.length === 0 ? (
+          ) : !claimsError && pendingClaims.length === 0 ? (
             <p className="text-xs text-muted text-center py-8">
               No ownership claims awaiting review.
             </p>
@@ -676,6 +716,15 @@ export const AdminDashboardPage: React.FC = () => {
               {loadingDocs ? 'Loading...' : 'Load Documents'}
             </button>
           </form>
+
+          {docsError && (
+            <div className="mb-4 p-4 border border-danger/30 rounded bg-danger/5">
+              <Alert type="error" message={docsError} className="mb-3" />
+              <button type="button" className="btn btn-primary btn-xs" onClick={() => handleLoadGarageDocs()}>
+                Retry Loading Documents
+              </button>
+            </div>
+          )}
 
           {loadedDocs.length === 0 ? (
             <p className="text-xs text-muted text-center py-6">
@@ -761,6 +810,10 @@ export const AdminDashboardPage: React.FC = () => {
               Remove offensive, abusive, or fraudulent reviews from public display.
             </p>
           </div>
+
+          {moderationError && (
+            <Alert type="error" message={moderationError} className="mb-4" />
+          )}
 
           <form onSubmit={handleModerateReviewSubmit} className="space-y-4">
             <div className="form-group">
@@ -857,11 +910,30 @@ export const AdminDashboardPage: React.FC = () => {
 
           {/* Existing Catalogue Table */}
           <div className="card p-6">
-            <h3 className="section-title text-base mb-4">Existing Standard Services</h3>
+            <div className="flex-between items-center mb-4">
+              <h3 className="section-title text-base">Existing Standard Services</h3>
+              <button type="button" className="btn btn-secondary btn-xs" onClick={fetchServices}>
+                Refresh
+              </button>
+            </div>
+
+            {servicesError && (
+              <div className="mb-4 p-4 border border-danger/30 rounded bg-danger/5">
+                <Alert type="error" message={servicesError} className="mb-3" />
+                <button type="button" className="btn btn-primary btn-xs" onClick={fetchServices}>
+                  Retry Loading Services
+                </button>
+              </div>
+            )}
+
             {loadingServices ? (
               <div className="center-loader py-8">
                 <div className="spinner"></div>
               </div>
+            ) : !servicesError && services.length === 0 ? (
+              <p className="text-xs text-muted text-center py-6">
+                No services registered in master catalogue.
+              </p>
             ) : (
               <div className="table-responsive">
                 <table className="table">
@@ -903,6 +975,7 @@ export const AdminDashboardPage: React.FC = () => {
         title={actionTitle}
       >
         <div className="space-y-4">
+          {modalError && <Alert type="error" message={modalError} className="mb-3" />}
           <p className="text-xs text-secondary">{actionDescription}</p>
 
           <div className="form-group">

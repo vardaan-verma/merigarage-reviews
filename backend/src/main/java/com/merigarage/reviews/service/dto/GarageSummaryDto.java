@@ -1,6 +1,7 @@
 package com.merigarage.reviews.service.dto;
 
 import com.merigarage.reviews.domain.Garage;
+import java.math.BigDecimal;
 
 public record GarageSummaryDto(
         Long id,
@@ -13,7 +14,10 @@ public record GarageSummaryDto(
         String postalCode,
         String phoneNumber,
         Boolean isVerified,
-        Long coverPhotoId
+        Long coverPhotoId,
+        BigDecimal latitude,
+        BigDecimal longitude,
+        String googleMapsUrl
 ) {
     public static GarageSummaryDto fromEntity(Garage garage, Long coverPhotoId) {
         return new GarageSummaryDto(
@@ -27,7 +31,10 @@ public record GarageSummaryDto(
                 garage.getPostalCode(),
                 garage.getPhoneNumber(),
                 garage.getIsVerified(),
-                coverPhotoId
+                coverPhotoId,
+                garage.getLatitude(),
+                garage.getLongitude(),
+                garage.getGoogleMapsUrl()
         );
     }
 }

@@ -62,8 +62,25 @@ public class GarageService {
         garage.setPhoneNumber(request.phoneNumber().trim());
         garage.setEmail(request.email() != null ? request.email().trim().toLowerCase(Locale.ROOT) : null);
         garage.setWebsiteUrl(request.websiteUrl());
-        garage.setLatitude(request.latitude());
-        garage.setLongitude(request.longitude());
+        garage.setGoogleMapsUrl(request.googleMapsUrl());
+
+        java.math.BigDecimal lat = request.latitude();
+        java.math.BigDecimal lon = request.longitude();
+        if ((lat == null || lon == null) && request.googleMapsUrl() != null) {
+            java.util.regex.Matcher m1 = java.util.regex.Pattern.compile("@(-?\\d+\\.\\d+),(-?\\d+\\.\\d+)").matcher(request.googleMapsUrl());
+            if (m1.find()) {
+                lat = new java.math.BigDecimal(m1.group(1));
+                lon = new java.math.BigDecimal(m1.group(2));
+            } else {
+                java.util.regex.Matcher m2 = java.util.regex.Pattern.compile("[?&]q=(-?\\d+\\.\\d+),(-?\\d+\\.\\d+)").matcher(request.googleMapsUrl());
+                if (m2.find()) {
+                    lat = new java.math.BigDecimal(m2.group(1));
+                    lon = new java.math.BigDecimal(m2.group(2));
+                }
+            }
+        }
+        garage.setLatitude(lat);
+        garage.setLongitude(lon);
 
         // Strictly enforce initial pending status and non-verified status
         garage.setApprovalStatus(GarageApprovalStatus.PENDING);

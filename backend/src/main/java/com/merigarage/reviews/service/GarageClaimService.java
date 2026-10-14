@@ -142,10 +142,10 @@ public class GarageClaimService {
     }
 
     public List<GarageClaim> getClaimsByUser(Long userId) {
-        return claimRepository.findByClaimantUserId(userId);
+        return claimRepository.findByClaimantUserIdOrderByCreatedAtDesc(userId);
     }
 
     public List<GarageClaim> getPendingClaimsForAdmin() {
-        return claimRepository.findByClaimStatus(ClaimStatus.PENDING);
+        return claimRepository.findByClaimStatusOrderByCreatedAtDesc(ClaimStatus.PENDING);
     }
 }

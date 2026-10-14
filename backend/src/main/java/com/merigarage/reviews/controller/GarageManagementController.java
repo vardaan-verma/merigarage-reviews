@@ -33,19 +33,32 @@ public class GarageManagementController {
     private final ServiceCatalogueService serviceCatalogueService;
     private final FileStorageService fileStorageService;
     private final SecurityContextService securityContextService;
+    private final com.merigarage.reviews.repository.GarageRepository garageRepository;
 
     public GarageManagementController(GarageService garageService,
                                       GarageProfileEditService profileEditService,
                                       GarageMediaService mediaService,
                                       ServiceCatalogueService serviceCatalogueService,
                                       FileStorageService fileStorageService,
-                                      SecurityContextService securityContextService) {
+                                      SecurityContextService securityContextService,
+                                      com.merigarage.reviews.repository.GarageRepository garageRepository) {
         this.garageService = garageService;
         this.profileEditService = profileEditService;
         this.mediaService = mediaService;
         this.serviceCatalogueService = serviceCatalogueService;
         this.fileStorageService = fileStorageService;
         this.securityContextService = securityContextService;
+        this.garageRepository = garageRepository;
+    }
+
+    @GetMapping("/my-garages")
+    public ResponseEntity<List<GarageSummaryDto>> getMyGarages() {
+        User currentUser = securityContextService.getRequiredCurrentUser();
+        List<Garage> owned = garageRepository.findByOwnerId(currentUser.getId());
+        List<GarageSummaryDto> dtos = owned.stream()
+                .map(g -> GarageSummaryDto.fromEntity(g, null))
+                .toList();
+        return ResponseEntity.ok(dtos);
     }
 
     @PostMapping
@@ -191,7 +204,9 @@ public class GarageManagementController {
 
     private void verifyGarageOwnership(Long garageId, User user) {
         Garage garage = garageService.getGarageById(garageId);
-        if (garage.getOwner() == null || !garage.getOwner().getId().equals(user.getId())) {
+        boolean isOwner = garage.getOwner() != null && garage.getOwner().getId().equals(user.getId());
+        boolean isCreator = garage.getCreatedBy() != null && garage.getCreatedBy().getId().equals(user.getId());
+        if (!isOwner && !isCreator) {
             throw new ForbiddenOperationException("Only the authorized garage owner can perform this operation.");
         }
     }
