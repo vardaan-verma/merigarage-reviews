@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
-import type { CreateGarageRequest } from '../api/types';
+import type { CreateGarageRequest, ServiceDto } from '../api/types';
 import { Alert } from '../components/Alert';
+import { StateSelect, CitySelect } from '../components/LocationSelect';
+import { getCitiesForState } from '../data/indiaLocations';
 
 interface SelectedPhoto {
   id: string;
@@ -14,7 +16,7 @@ interface SelectedPhoto {
   errorMessage?: string;
 }
 
-const MAX_PHOTOS = 10;
+const MAX_PHOTOS = 7;
 const MAX_PHOTO_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
 const ALLOWED_PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
@@ -36,6 +38,12 @@ export const SubmitGaragePage: React.FC = () => {
   const [latitude, setLatitude] = useState('');
   const [longitude, setLongitude] = useState('');
 
+  // Service Catalogue state
+  const [availableServices, setAvailableServices] = useState<ServiceDto[]>([]);
+  const [selectedServiceIds, setSelectedServiceIds] = useState<number[]>([]);
+  const [serviceSearchQuery, setServiceSearchQuery] = useState('');
+  const [loadingServices, setLoadingServices] = useState(false);
+
   // Photo management state
   const [selectedPhotos, setSelectedPhotos] = useState<SelectedPhoto[]>([]);
   const [photoError, setPhotoError] = useState<string | null>(null);
@@ -45,6 +53,15 @@ export const SubmitGaragePage: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [submittedGarage, setSubmittedGarage] = useState<{ id: number; slug: string; name: string } | null>(null);
   const [isCompleteSuccess, setIsCompleteSuccess] = useState(false);
+
+  useEffect(() => {
+    setLoadingServices(true);
+    api.services
+      .list()
+      .then((data) => setAvailableServices(data || []))
+      .catch(() => {})
+      .finally(() => setLoadingServices(false));
+  }, []);
 
   // Revoke object URLs on unmount
   useEffect(() => {
@@ -79,6 +96,14 @@ export const SubmitGaragePage: React.FC = () => {
     }
   };
 
+  const handleStateChange = (newState: string) => {
+    setState(newState);
+    const validCities = getCitiesForState(newState);
+    if (city && !validCities.includes(city)) {
+      setCity('');
+    }
+  };
+
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     setPhotoError(null);
     const files = e.target.files;
@@ -95,42 +120,45 @@ export const SubmitGaragePage: React.FC = () => {
         setPhotoError(`Maximum limit of ${MAX_PHOTOS} active photos reached.`);
         break;
       }
+
+      let isInvalid = false;
+      let fileErrorMessage: string | undefined;
+
       if (!ALLOWED_PHOTO_TYPES.includes(file.type)) {
         unsupportedCount++;
-        continue;
-      }
-      if (file.size > MAX_PHOTO_SIZE_BYTES) {
+        isInvalid = true;
+        fileErrorMessage = 'Unsupported format (only JPG, PNG, WebP allowed)';
+      } else if (file.size > MAX_PHOTO_SIZE_BYTES) {
         oversizeCount++;
-        continue;
+        isInvalid = true;
+        fileErrorMessage = `Exceeds 5 MB limit (${(file.size / (1024 * 1024)).toFixed(2)} MB)`;
       }
 
-      const isFirstEver = currentCount === 0 && newPhotos.length === 0;
+      const isFirstEver = currentCount === 0 && newPhotos.length === 0 && !isInvalid;
       newPhotos.push({
         id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
         file,
-        previewUrl: URL.createObjectURL(file),
+        previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : '',
         caption: '',
         isCover: isFirstEver,
-        status: 'idle',
+        status: isInvalid ? 'error' : 'idle',
+        errorMessage: fileErrorMessage,
       });
     }
 
-    if (oversizeCount > 0) {
+    if (oversizeCount > 0 || unsupportedCount > 0) {
       setPhotoError(
-        `${oversizeCount} image(s) exceeded the 5 MB limit and were skipped. Valid images were added.`
-      );
-    } else if (unsupportedCount > 0) {
-      setPhotoError(
-        `${unsupportedCount} image(s) had unsupported formats and were skipped. Only JPG, PNG, and WebP are allowed.`
+        `Some selected images have errors (marked in red below). Click Remove to discard them before submitting.`
       );
     }
 
     if (newPhotos.length > 0) {
       setSelectedPhotos((prev) => {
         const combined = [...prev, ...newPhotos];
-        const hasCover = combined.some((p) => p.isCover);
-        if (!hasCover && combined.length > 0) {
-          combined[0].isCover = true;
+        const hasCover = combined.some((p) => p.isCover && p.status !== 'error');
+        if (!hasCover) {
+          const firstValid = combined.find((p) => p.status !== 'error');
+          if (firstValid) firstValid.isCover = true;
         }
         return combined;
       });
@@ -140,7 +168,6 @@ export const SubmitGaragePage: React.FC = () => {
   };
 
   const handleRemovePhoto = (id: string) => {
-    setPhotoError(null);
     setSelectedPhotos((prev) => {
       const target = prev.find((p) => p.id === id);
       if (target?.previewUrl) {
@@ -148,7 +175,13 @@ export const SubmitGaragePage: React.FC = () => {
       }
       const filtered = prev.filter((p) => p.id !== id);
       if (target?.isCover && filtered.length > 0) {
-        filtered[0].isCover = true;
+        const nextValid = filtered.find((p) => p.status !== 'error') || filtered[0];
+        nextValid.isCover = true;
+      }
+      // If no photos with errors remain, clear top error
+      const hasErrorsLeft = filtered.some((p) => p.status === 'error');
+      if (!hasErrorsLeft) {
+        setPhotoError(null);
       }
       return filtered;
     });
@@ -230,6 +263,7 @@ export const SubmitGaragePage: React.FC = () => {
           googleMapsUrl: googleMapsUrl.trim() || undefined,
           latitude: latitude ? parseFloat(latitude) : undefined,
           longitude: longitude ? parseFloat(longitude) : undefined,
+          serviceIds: selectedServiceIds.length > 0 ? selectedServiceIds : undefined,
         };
 
         const result = await api.garageManagement.createListing(payload);
@@ -469,34 +503,29 @@ export const SubmitGaragePage: React.FC = () => {
 
           <div className="grid grid-3 gap-3">
             <div className="form-group">
-              <label className="form-label" htmlFor="addr-city">
-                City *
+              <label className="form-label" htmlFor="addr-state">
+                State *
               </label>
-              <input
-                id="addr-city"
-                type="text"
+              <StateSelect
+                id="addr-state"
                 required
                 disabled={!!submittedGarage}
-                className="form-control"
-                placeholder="e.g. Jaipur"
-                value={city}
-                onChange={(e) => setCity(e.target.value)}
+                value={state}
+                onChange={handleStateChange}
               />
             </div>
 
             <div className="form-group">
-              <label className="form-label" htmlFor="addr-state">
-                State *
+              <label className="form-label" htmlFor="addr-city">
+                City *
               </label>
-              <input
-                id="addr-state"
-                type="text"
+              <CitySelect
+                id="addr-city"
                 required
+                selectedState={state}
                 disabled={!!submittedGarage}
-                className="form-control"
-                placeholder="e.g. Rajasthan"
-                value={state}
-                onChange={(e) => setState(e.target.value)}
+                value={city}
+                onChange={setCity}
               />
             </div>
 
@@ -593,6 +622,80 @@ export const SubmitGaragePage: React.FC = () => {
           </div>
         </div>
 
+        {/* Workshop Services Section */}
+        <div className="pt-2 border-t border-border">
+          <div className="flex-between items-center mb-2">
+            <div>
+              <h3 className="section-title text-base mb-0">Offered Workshop Services</h3>
+              <p className="text-xs text-secondary mt-1 mb-0">
+                Select the automotive services your workshop specializes in from our verified service catalogue.
+              </p>
+            </div>
+            <span className="badge badge-primary text-xs font-mono">
+              {selectedServiceIds.length} Selected
+            </span>
+          </div>
+
+          {/* Search Box */}
+          <div className="form-group mb-3">
+            <input
+              type="text"
+              className="form-control text-sm"
+              placeholder="Search services (e.g. Brake, Oil, AC, Battery, Detailing, Suspension)..."
+              value={serviceSearchQuery}
+              onChange={(e) => setServiceSearchQuery(e.target.value)}
+              disabled={!!submittedGarage}
+            />
+          </div>
+
+          {/* Service Options List as Selectable Red Pill Buttons */}
+          <div className="max-h-72 overflow-y-auto p-3.5 bg-surface rounded-xl border border-border flex flex-wrap gap-2.5 mb-4">
+            {loadingServices ? (
+              <div className="w-full text-center py-4 text-xs text-muted">
+                Loading service catalogue...
+              </div>
+            ) : (
+              (() => {
+                const query = serviceSearchQuery.trim().toLowerCase();
+                const filtered = availableServices.filter(
+                  (s) => !query || s.name.toLowerCase().includes(query)
+                );
+
+                if (filtered.length === 0) {
+                  return (
+                    <div className="w-full text-center py-4 text-xs text-muted">
+                      No services found matching "{serviceSearchQuery}".
+                    </div>
+                  );
+                }
+
+                return filtered.map((svc) => {
+                  const isSelected = selectedServiceIds.includes(svc.id);
+                  return (
+                    <button
+                      key={svc.id}
+                      type="button"
+                      disabled={!!submittedGarage}
+                      onClick={() => {
+                        setSelectedServiceIds((prev) =>
+                          isSelected ? prev.filter((id) => id !== svc.id) : [...prev, svc.id]
+                        );
+                      }}
+                      className={`inline-flex items-center px-4 py-2 rounded-full text-xs font-semibold transition-all cursor-pointer border ${
+                        isSelected
+                          ? 'bg-primary border-primary text-white shadow-md ring-2 ring-primary/40 font-bold'
+                          : 'bg-surface-raised border-border text-secondary hover:border-primary/50 hover:text-white hover:bg-surface-raised/80'
+                      }`}
+                    >
+                      <span>{svc.name}</span>
+                    </button>
+                  );
+                });
+              })()
+            )}
+          </div>
+        </div>
+
         {/* Workshop Photos Section */}
         <div className="pt-2 border-t border-border">
           <div className="flex-between items-center mb-2">
@@ -600,7 +703,7 @@ export const SubmitGaragePage: React.FC = () => {
             <span className="text-xs text-secondary font-mono">{selectedPhotos.length}/{MAX_PHOTOS} photos</span>
           </div>
           <p className="text-xs text-secondary mb-3">
-            Upload workshop exterior, customer lounge, service bays, or diagnostic tools. Supports JPG, PNG, and WebP (up to 5 MB per image, maximum 10 active photos).
+            Upload workshop exterior, customer lounge, service bays, or diagnostic tools. Supports JPG, PNG, and WebP (up to 5 MB per image, maximum 7 active photos).
           </p>
 
           <div className="form-group mb-4">
@@ -623,46 +726,59 @@ export const SubmitGaragePage: React.FC = () => {
           {selectedPhotos.length > 0 && (
             <div className="photo-preview-grid mt-3">
               {selectedPhotos.map((photo, index) => (
-                <div key={photo.id} className="card p-3 border border-border bg-surface-raised text-xs space-y-2">
-                  <div className="flex gap-3">
-                    <img
-                      src={photo.previewUrl}
-                      alt={`Preview ${index + 1}`}
-                      className="w-20 h-20 object-cover rounded border border-border flex-shrink-0"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold truncate text-foreground text-xs" title={photo.file.name}>
-                        {photo.file.name}
-                      </p>
-                      <span className="text-muted block font-mono text-xs">
-                        {(photo.file.size / (1024 * 1024)).toFixed(2)} MB
-                      </span>
-
-                      <div className="mt-2 flex items-center gap-2">
-                        {photo.isCover ? (
-                          <span className="badge badge-accent text-xs">★ Cover Photo</span>
-                        ) : (
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-xs"
-                            onClick={() => handleSetCoverPhoto(photo.id)}
-                            disabled={submitting}
-                          >
-                            Set as Cover
-                          </button>
-                        )}
-                        {!submittedGarage && (
-                          <button
-                            type="button"
-                            className="btn btn-outline btn-xs text-danger"
-                            onClick={() => handleRemovePhoto(photo.id)}
-                            disabled={submitting}
-                          >
-                            Remove
-                          </button>
-                        )}
+                <div
+                  key={photo.id}
+                  className={`photo-preview-card card p-3 border ${
+                    photo.status === 'error' ? 'border-danger/70 bg-danger/5' : 'border-border bg-surface-raised'
+                  } text-xs space-y-2`}
+                >
+                  <div className="relative overflow-hidden rounded">
+                    {photo.previewUrl ? (
+                      <img
+                        src={photo.previewUrl}
+                        alt={`Preview ${index + 1}`}
+                        className="photo-preview-thumb"
+                      />
+                    ) : (
+                      <div className="w-full h-40 bg-surface flex flex-col items-center justify-center text-muted">
+                        <span className="material-symbols-outlined text-4xl text-danger">broken_image</span>
+                        <span className="text-xs mt-1 text-danger font-medium">Invalid file</span>
                       </div>
-                    </div>
+                    )}
+
+                    {photo.isCover && (
+                      <span className="badge badge-accent absolute top-2 left-2 text-xs">
+                        ★ Cover Photo
+                      </span>
+                    )}
+                    {photo.status === 'error' && (
+                      <span className="badge badge-danger absolute top-2 left-2 text-xs">
+                        ⚠ Error
+                      </span>
+                    )}
+
+                    {/* Visible Remove Button / Cross on top-right */}
+                    {photo.status !== 'success' && (
+                      <button
+                        type="button"
+                        aria-label={`Remove photo ${photo.file.name}`}
+                        className="btn btn-danger btn-xs absolute top-2 right-2 rounded-full w-7 h-7 flex items-center justify-center p-0 shadow"
+                        onClick={() => handleRemovePhoto(photo.id)}
+                        disabled={submitting}
+                        title="Remove photo"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex-between items-center text-xs">
+                    <span className="font-semibold truncate text-foreground flex-1 min-w-0" title={photo.file.name}>
+                      {photo.file.name}
+                    </span>
+                    <span className="text-muted font-mono ml-2">
+                      {(photo.file.size / (1024 * 1024)).toFixed(2)} MB
+                    </span>
                   </div>
 
                   <div>
@@ -671,7 +787,7 @@ export const SubmitGaragePage: React.FC = () => {
                       className="form-control text-xs py-1"
                       placeholder="Optional caption (e.g. Front Entrance, Service Bay 1)"
                       value={photo.caption}
-                      disabled={submitting || photo.status === 'success'}
+                      disabled={submitting || photo.status === 'success' || photo.status === 'error'}
                       onChange={(e) => handleCaptionChange(photo.id, e.target.value)}
                     />
                   </div>
@@ -687,6 +803,34 @@ export const SubmitGaragePage: React.FC = () => {
                       ⚠ Failed: {photo.errorMessage}
                     </span>
                   )}
+
+                  <div className="flex-between items-center pt-2 border-t border-border">
+                    {!photo.isCover && photo.status !== 'error' ? (
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-xs"
+                        onClick={() => handleSetCoverPhoto(photo.id)}
+                        disabled={submitting || photo.status === 'success'}
+                      >
+                        Set as Cover
+                      </button>
+                    ) : (
+                      <span className="text-xs text-muted">
+                        {photo.isCover ? 'Cover photo' : ''}
+                      </span>
+                    )}
+
+                    {photo.status !== 'success' && (
+                      <button
+                        type="button"
+                        className="btn btn-danger btn-xs"
+                        onClick={() => handleRemovePhoto(photo.id)}
+                        disabled={submitting}
+                      >
+                        ✕ Remove
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>

@@ -346,4 +346,77 @@ class GarageManagementControllerTest {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error").value("Forbidden"));
     }
+
+    @Test
+    void getMyGarages_ReturnsRegisteredWorkshops() throws Exception {
+        MockHttpSession ownerSession = login(ownerEmail);
+
+        mockMvc.perform(get("/api/garages/my-garages")
+                        .session(ownerSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray())
+                .andExpect(jsonPath("$[?(@.id == " + ownerGarage.getId() + ")]").exists());
+    }
+
+    @Test
+    void getMyGarageById_AuthorizedOwner_Success_AndNonOwnerDenied() throws Exception {
+        MockHttpSession ownerSession = login(ownerEmail);
+        MockHttpSession otherSession = login(otherUserEmail);
+
+        // Owner can access full details
+        mockMvc.perform(get("/api/garages/my-garages/{id}", ownerGarage.getId())
+                        .session(ownerSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(ownerGarage.getId()))
+                .andExpect(jsonPath("$.name").value(ownerGarage.getName()))
+                .andExpect(jsonPath("$.city").value(ownerGarage.getCity()));
+
+        // Other non-owner user is denied with 403 Forbidden
+        mockMvc.perform(get("/api/garages/my-garages/{id}", ownerGarage.getId())
+                        .session(otherSession))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("Forbidden"));
+    }
+
+    @Test
+    void createGarageListing_WithSelectedServices_PersistsServicesAtomically() throws Exception {
+        MockHttpSession session = login(ownerEmail);
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+
+        // Create an active service
+        com.merigarage.reviews.domain.Service svc = catalogueService.createService(new CreateServiceRequest(
+                "Wheel Alignment " + suffix, ServiceCategory.WHEELS_AND_TYRES, "Laser alignment", (short) 1, true
+        ), owner);
+
+        String jsonBody = """
+                {
+                    "name": "Alignment Center %s",
+                    "description": "Wheel experts",
+                    "addressLine1": "45 Tyre Rd",
+                    "city": "Bengaluru",
+                    "state": "Karnataka",
+                    "postalCode": "560001",
+                    "phoneNumber": "9876543299",
+                    "serviceIds": [%d]
+                }
+                """.formatted(suffix, svc.getId());
+
+        MvcResult res = mockMvc.perform(post("/api/garages")
+                        .session(session)
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonBody))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").isNumber())
+                .andReturn();
+
+        Number newGarageId = com.jayway.jsonpath.JsonPath.read(res.getResponse().getContentAsString(), "$.id");
+
+        // Fetch via my-garages/{id} to verify associated service is present
+        mockMvc.perform(get("/api/garages/my-garages/{id}", newGarageId)
+                        .session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.services[0].serviceId").value(svc.getId()))
+                .andExpect(jsonPath("$.services[0].serviceName").value("Wheel Alignment " + suffix));
+    }
 }

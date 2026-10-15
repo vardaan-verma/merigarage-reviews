@@ -221,6 +221,58 @@ class ReviewControllerTest {
     }
 
     @Test
+    void createReview_WithAliasedPropertyNames_Succeeds() throws Exception {
+        MockHttpSession authorSession = login(authorUser.getEmail());
+
+        String aliasedJson = """
+                {
+                    "serviceQuality": 5,
+                    "pricing": 4,
+                    "timeline": 5,
+                    "communication": 4,
+                    "reviewTitle": "Aliased Fields Review",
+                    "reviewText": "Using the simplified frontend property names."
+                }
+                """;
+
+        mockMvc.perform(post("/api/garages/{garageId}/reviews", approvedGarage.getId())
+                        .session(authorSession)
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(aliasedJson))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").isNumber())
+                .andExpect(jsonPath("$.ratingServiceQuality").value(5))
+                .andExpect(jsonPath("$.ratingPricing").value(4))
+                .andExpect(jsonPath("$.ratingTimeline").value(5))
+                .andExpect(jsonPath("$.ratingCommunication").value(4))
+                .andExpect(jsonPath("$.reviewTitle").value("Aliased Fields Review"));
+    }
+
+    @Test
+    void createReview_WithMissingNullRatings_Returns400() throws Exception {
+        MockHttpSession authorSession = login(authorUser.getEmail());
+
+        String nullRatingJson = """
+                {
+                    "ratingPricing": 4,
+                    "ratingTimeline": 5,
+                    "ratingCommunication": 4,
+                    "reviewTitle": "Missing Service Quality",
+                    "reviewText": "Missing service quality rating."
+                }
+                """;
+
+        mockMvc.perform(post("/api/garages/{garageId}/reviews", approvedGarage.getId())
+                        .session(authorSession)
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(nullRatingJson))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("Bad Request"));
+    }
+
+    @Test
     void updateReview_OnlyAuthorPermitted() throws Exception {
         Review review = reviewService.createReview(approvedGarage.getId(), new CreateReviewRequest(
                 (byte) 4, (byte) 4, (byte) 4, (byte) 4, "Initial Title", "Initial review body"

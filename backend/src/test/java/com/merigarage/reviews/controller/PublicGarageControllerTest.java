@@ -167,4 +167,49 @@ class PublicGarageControllerTest {
                 .andExpect(jsonPath("$.error").value("Not Found"))
                 .andExpect(jsonPath("$.message").value("Garage listing is not publicly visible."));
     }
+
+    @Test
+    void listApprovedGarages_FilteredByServiceSlug_ReturnsOnlyMatchingGaragesAndExcludesPending() throws Exception {
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+
+        // 1. Create a service
+        com.merigarage.reviews.domain.Service service = catalogueService.createService(new CreateServiceRequest(
+                "Brake Overhaul " + suffix, ServiceCategory.MECHANICAL_REPAIR, "Full brake maintenance", (short) 1, true
+        ), adminUser);
+
+        // 2. Create Approved Garage offering the service
+        Garage approvedMatching = garageService.createGarage(new CreateGarageRequest(
+                "Brake Master " + suffix, "Brake specialists", "10 Brake Way", null,
+                "Jaipur", "Rajasthan", "302001", "9876543210",
+                "brake." + suffix + "@example.com", null, null, null
+        ), normalUser);
+        catalogueService.associateServiceWithGarage(approvedMatching.getId(), service.getId(), new BigDecimal("1200"), true);
+        garageService.approveGarage(approvedMatching.getId(), adminUser, "Approved");
+
+        // 3. Create Approved Garage NOT offering the service
+        Garage approvedOther = garageService.createGarage(new CreateGarageRequest(
+                "Tyre Only " + suffix, "Tyre specialists", "20 Tyre Way", null,
+                "Jaipur", "Rajasthan", "302001", "9876543211",
+                "tyre." + suffix + "@example.com", null, null, null
+        ), normalUser);
+        garageService.approveGarage(approvedOther.getId(), adminUser, "Approved");
+
+        // 4. Create Pending Garage offering the service (must NOT appear in public results)
+        Garage pendingOffering = garageService.createGarage(new CreateGarageRequest(
+                "Pending Brake Shop " + suffix, "Pending brake shop", "30 Brake Way", null,
+                "Jaipur", "Rajasthan", "302001", "9876543212",
+                "pendingbrake." + suffix + "@example.com", null, null, null
+        ), normalUser);
+        catalogueService.associateServiceWithGarage(pendingOffering.getId(), service.getId(), new BigDecimal("1000"), true);
+
+        // Query public garages with serviceSlug
+        mockMvc.perform(get("/api/garages")
+                        .param("serviceSlug", service.getSlug())
+                        .param("page", "0")
+                        .param("size", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[?(@.name == 'Brake Master " + suffix + "')]").exists())
+                .andExpect(jsonPath("$.content[?(@.name == 'Tyre Only " + suffix + "')]").doesNotExist())
+                .andExpect(jsonPath("$.content[?(@.name == 'Pending Brake Shop " + suffix + "')]").doesNotExist());
+    }
 }

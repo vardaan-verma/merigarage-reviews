@@ -14,11 +14,16 @@ public record GarageServiceDto(
         Boolean isAvailable
 ) {
     public static GarageServiceDto fromEntity(GarageService gs) {
+        if (gs == null) return null;
+        Integer sId = gs.getService() != null ? gs.getService().getId() : (gs.getId() != null ? gs.getId().getServiceId() : null);
+        String sName = gs.getService() != null ? gs.getService().getName() : "Service";
+        ServiceCategory sCat = gs.getService() != null ? gs.getService().getCategory() : null;
+        String sDesc = gs.getService() != null ? gs.getService().getDescription() : null;
         return new GarageServiceDto(
-                gs.getService().getId(),
-                gs.getService().getName(),
-                gs.getService().getCategory(),
-                gs.getService().getDescription(),
+                sId,
+                sName,
+                sCat,
+                sDesc,
                 gs.getStartingPrice(),
                 gs.getIsAvailable()
         );

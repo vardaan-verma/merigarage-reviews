@@ -1,6 +1,7 @@
 package com.merigarage.reviews.controller;
 
 import com.merigarage.reviews.domain.User;
+import com.merigarage.reviews.domain.enums.AdminPermissionCode;
 import com.merigarage.reviews.domain.enums.RoleName;
 import com.merigarage.reviews.exception.ResourceNotFoundException;
 import com.merigarage.reviews.security.SecurityContextService;
@@ -45,10 +46,20 @@ public class ServiceCatalogueController {
         return ResponseEntity.ok(ServiceDto.fromEntity(service));
     }
 
+    @GetMapping("/api/admin/services")
+    @PreAuthorize("hasAuthority('CONTENT_MODERATION')")
+    public ResponseEntity<List<ServiceDto>> listAllServicesForAdmin() {
+        securityContextService.requireAdminPermission(AdminPermissionCode.CONTENT_MODERATION);
+        List<ServiceDto> services = serviceCatalogueService.getAllServicesForAdmin().stream()
+                .map(ServiceDto::fromEntity)
+                .toList();
+        return ResponseEntity.ok(services);
+    }
+
     @PostMapping("/api/admin/services")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('CONTENT_MODERATION')")
     public ResponseEntity<ServiceDto> createService(@Valid @RequestBody CreateServiceRequest request) {
-        securityContextService.requireRole(RoleName.ROLE_ADMIN);
+        securityContextService.requireAdminPermission(AdminPermissionCode.CONTENT_MODERATION);
         User adminUser = securityContextService.getRequiredCurrentUser();
 
         com.merigarage.reviews.domain.Service created = serviceCatalogueService.createService(request, adminUser);
@@ -56,12 +67,12 @@ public class ServiceCatalogueController {
     }
 
     @PutMapping("/api/admin/services/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('CONTENT_MODERATION')")
     public ResponseEntity<ServiceDto> updateService(
             @PathVariable Integer id,
             @Valid @RequestBody UpdateServiceRequest request
     ) {
-        securityContextService.requireRole(RoleName.ROLE_ADMIN);
+        securityContextService.requireAdminPermission(AdminPermissionCode.CONTENT_MODERATION);
         User adminUser = securityContextService.getRequiredCurrentUser();
 
         com.merigarage.reviews.domain.Service updated = serviceCatalogueService.updateService(id, request, adminUser);

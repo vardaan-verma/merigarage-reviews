@@ -68,36 +68,46 @@ class GarageMediaServiceTest {
     }
 
     @Test
-    void addPhoto_EnforcesMaximumTenActivePhotos() {
+    void addPhoto_EnforcesMaximumSevenActivePhotos() {
         User user = createTestUser();
         Garage garage = createTestGarage(user);
 
-        // Upload 10 photos successfully
-        for (int i = 1; i <= 10; i++) {
+        // Upload 7 photos successfully (1 cover + 6 additional)
+        for (int i = 1; i <= 7; i++) {
             PhotoUploadRequest req = new PhotoUploadRequest(
                     "garages/" + garage.getId() + "/photo_" + i + ".jpg",
                     "image/jpeg",
                     1024L * 100,
                     "Photo " + i,
                     (byte) i,
-                    false
+                    i == 1
             );
             mediaService.addPhoto(garage.getId(), req, user);
         }
 
-        // 11th photo must be rejected
-        PhotoUploadRequest req11 = new PhotoUploadRequest(
-                "garages/" + garage.getId() + "/photo_11.jpg",
+        // 8th photo must be rejected
+        PhotoUploadRequest req8 = new PhotoUploadRequest(
+                "garages/" + garage.getId() + "/photo_8.jpg",
                 "image/jpeg",
                 1024L * 100,
-                "Photo 11",
-                (byte) 11,
+                "Photo 8",
+                (byte) 8,
                 false
         );
 
-        assertThatThrownBy(() -> mediaService.addPhoto(garage.getId(), req11, user))
+        assertThatThrownBy(() -> mediaService.addPhoto(garage.getId(), req8, user))
                 .isInstanceOf(ValidationException.class)
-                .hasMessageContaining("Maximum limit of 10 active photos reached");
+                .hasMessageContaining("Maximum limit of 7 active photos reached");
+
+        // Deleting a photo frees a slot
+        List<GaragePhoto> activePhotos = photoRepository.findByGarageIdAndIsDeletedFalseOrderByDisplayOrderAsc(garage.getId());
+        assertThat(activePhotos).hasSize(7);
+        mediaService.deletePhoto(garage.getId(), activePhotos.get(1).getId(), user);
+
+        // Uploading 8th photo now succeeds because a slot was freed
+        GaragePhoto newPhoto = mediaService.addPhoto(garage.getId(), req8, user);
+        assertThat(newPhoto).isNotNull();
+        assertThat(newPhoto.getStorageKey()).contains("photo_8.jpg");
     }
 
     @Test
@@ -131,6 +141,42 @@ class GarageMediaServiceTest {
     }
 
     @Test
+    void addPhoto_ExistingGarageWithMoreThanSevenPhotos_PreservesPhotosAndBlocksNewUploads() {
+        User user = createTestUser();
+        Garage garage = createTestGarage(user);
+
+        // Simulate 8 existing photos saved in database previously
+        for (int i = 1; i <= 8; i++) {
+            GaragePhoto existingPhoto = new GaragePhoto();
+            existingPhoto.setGarage(garage);
+            existingPhoto.setUploadedBy(user);
+            existingPhoto.setStorageKey("legacy/photo_" + i + ".jpg");
+            existingPhoto.setContentType("image/jpeg");
+            existingPhoto.setFileSizeBytes(1024L * 50);
+            existingPhoto.setCaption("Legacy " + i);
+            existingPhoto.setDisplayOrder((byte) i);
+            existingPhoto.setIsCover(i == 1);
+            photoRepository.save(existingPhoto);
+        }
+
+        List<GaragePhoto> before = photoRepository.findByGarageIdAndIsDeletedFalseOrderByDisplayOrderAsc(garage.getId());
+        assertThat(before).hasSize(8);
+
+        // Attempting to upload a 9th photo should throw an informative validation exception
+        PhotoUploadRequest reqNew = new PhotoUploadRequest(
+                "new_photo.jpg", "image/jpeg", 1024L, "New Photo", (byte) 9, false
+        );
+
+        assertThatThrownBy(() -> mediaService.addPhoto(garage.getId(), reqNew, user))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("which exceeds the limit of 7");
+
+        // Existing photos remain untouched
+        List<GaragePhoto> after = photoRepository.findByGarageIdAndIsDeletedFalseOrderByDisplayOrderAsc(garage.getId());
+        assertThat(after).hasSize(8);
+    }
+
+    @Test
     void uploadDocument_KeepsStorageKeyPrivateInSummaryDto() {
         User user = createTestUser();
         Garage garage = createTestGarage(user);
@@ -151,5 +197,31 @@ class GarageMediaServiceTest {
         assertThat(dto.originalFileName()).isEqualTo("license.pdf");
         assertThat(dto.documentType()).isEqualTo(DocumentType.TRADE_LICENSE);
         // The DTO record has no storageKey accessor, preserving confidentiality
+    }
+
+    @Test
+    void deletePhoto_PromotesNextPhotoToCoverWhenCoverIsDeleted() {
+        User user = createTestUser();
+        Garage garage = createTestGarage(user);
+
+        GaragePhoto photo1 = mediaService.addPhoto(garage.getId(), new PhotoUploadRequest(
+                "p1.jpg", "image/jpeg", 1024L, "P1", (byte) 1, true
+        ), user);
+        GaragePhoto photo2 = mediaService.addPhoto(garage.getId(), new PhotoUploadRequest(
+                "p2.jpg", "image/jpeg", 1024L, "P2", (byte) 2, false
+        ), user);
+
+        assertThat(photo1.getIsCover()).isTrue();
+        assertThat(photo2.getIsCover()).isFalse();
+
+        // Delete photo1 (the cover)
+        mediaService.deletePhoto(garage.getId(), photo1.getId(), user);
+
+        GaragePhoto reloadedP1 = photoRepository.findById(photo1.getId()).orElseThrow();
+        GaragePhoto reloadedP2 = photoRepository.findById(photo2.getId()).orElseThrow();
+
+        assertThat(reloadedP1.getIsDeleted()).isTrue();
+        assertThat(reloadedP1.getIsCover()).isFalse();
+        assertThat(reloadedP2.getIsCover()).isTrue();
     }
 }

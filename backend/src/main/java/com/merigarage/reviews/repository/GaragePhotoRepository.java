@@ -18,4 +18,7 @@ public interface GaragePhotoRepository extends JpaRepository<GaragePhoto, Long> 
     long countByGarageIdAndIsDeletedFalseAndModerationStatusNot(Long garageId, ModerationStatus moderationStatus);
 
     List<GaragePhoto> findByModerationStatus(ModerationStatus status);
+
+    @org.springframework.data.jpa.repository.Query("SELECT p FROM GaragePhoto p WHERE p.garage.id IN :garageIds AND p.isCover = true AND p.isDeleted = false")
+    List<GaragePhoto> findCoverPhotosByGarageIds(@org.springframework.data.repository.query.Param("garageIds") List<Long> garageIds);
 }

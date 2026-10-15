@@ -12,8 +12,23 @@ import type {
   ServiceDto,
   ProfileEditRequest,
   DocumentType,
+  QuoteRequestDto,
+  QuoteOwnerResponseRequest,
 } from '../api/types';
 import { Alert } from '../components/Alert';
+import { Modal } from '../components/Modal';
+import { StateSelect, CitySelect } from '../components/LocationSelect';
+import { getCitiesForState } from '../data/indiaLocations';
+
+interface PendingPhoto {
+  id: string;
+  file: File;
+  previewUrl: string;
+  caption: string;
+  isCover: boolean;
+  status: 'idle' | 'uploading' | 'success' | 'error';
+  errorMessage?: string;
+}
 
 export const OwnerDashboardPage: React.FC = () => {
   const { user, isAdmin, refreshUser } = useAuth();
@@ -21,9 +36,20 @@ export const OwnerDashboardPage: React.FC = () => {
   const slugParam = searchParams.get('slug') || '';
 
   const [myGarages, setMyGarages] = useState<GarageSummaryDto[]>([]);
-  const [garageInput, setGarageInput] = useState(slugParam);
   const [activeGarage, setActiveGarage] = useState<GarageDetailDto | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'edits' | 'photos' | 'documents' | 'services'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'quotes' | 'edits' | 'photos' | 'documents' | 'services'>('overview');
+
+  // Quotes Management Data
+  const [quoteRequests, setQuoteRequests] = useState<QuoteRequestDto[]>([]);
+  const [quoteFilter, setQuoteFilter] = useState<'ALL' | 'PENDING' | 'QUOTED' | 'ACCEPTED' | 'HISTORY'>('ALL');
+  const [selectedQuote, setSelectedQuote] = useState<QuoteRequestDto | null>(null);
+  const [respondAction, setRespondAction] = useState<'REVIEW' | 'QUOTE' | 'DECLINE' | 'COMPLETE' | null>(null);
+  const [proposedAmount, setProposedAmount] = useState<number | ''>('');
+  const [ownerNotes, setOwnerNotes] = useState('');
+  const [ownerActionLoading, setOwnerActionLoading] = useState(false);
+  const [ownerActionError, setOwnerActionError] = useState<string | null>(null);
+  const [replyText, setReplyText] = useState('');
+  const [replyLoading, setReplyLoading] = useState(false);
 
   // Loading & Global Status
   const [loading, setLoading] = useState(false);
@@ -43,11 +69,13 @@ export const OwnerDashboardPage: React.FC = () => {
   const [editWebsite, setEditWebsite] = useState('');
   const [editSubmitting, setEditSubmitting] = useState(false);
 
-  // Photos Data
+  // Photos Data (Saved & Pending Upload Queue)
   const [photos, setPhotos] = useState<GaragePhotoDto[]>([]);
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
-  const [photoCaption, setPhotoCaption] = useState('');
+  const [pendingPhotos, setPendingPhotos] = useState<PendingPhoto[]>([]);
+  const [uploadingPhotos, setUploadingPhotos] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<string | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
+  const [deletingPhotoId, setDeletingPhotoId] = useState<number | null>(null);
 
   // Documents Data
   const [documents, setDocuments] = useState<GarageDocumentDto[]>([]);
@@ -60,13 +88,20 @@ export const OwnerDashboardPage: React.FC = () => {
   const [garageServices, setGarageServices] = useState<GarageServiceDto[]>([]);
   const [updatingServiceId, setUpdatingServiceId] = useState<number | null>(null);
 
-  // Load garage details
-  const loadGarage = useCallback(async (slug: string) => {
-    if (!slug.trim()) return;
+  // Load garage details by numeric ID ensuring authorized ownership
+  const loadGarageById = useCallback(async (garageId: number) => {
     try {
       setLoading(true);
       setGlobalError(null);
-      const data = await api.garages.getBySlug(slug.trim());
+      setGlobalSuccess(null);
+      // Clean previous sub-resources to avoid stale state between workshops
+      setProfileEdits([]);
+      setDocuments([]);
+      setPendingPhotos([]);
+      setPhotoError(null);
+      setDocError(null);
+
+      const data = await api.garageManagement.getMyGarageById(garageId);
       setActiveGarage(data);
       setPhotos(data.photos || []);
       setGarageServices(data.services || []);
@@ -83,17 +118,19 @@ export const OwnerDashboardPage: React.FC = () => {
       setEditWebsite(data.websiteUrl || '');
 
       // Load sub-resources
-      const [editsRes, docsRes, allServicesRes] = await Promise.all([
+      const [editsRes, docsRes, allServicesRes, quotesRes] = await Promise.all([
         api.garageManagement.getProfileEdits(data.id).catch(() => []),
         api.garageManagement.getDocuments(data.id).catch(() => []),
         api.services.list().catch(() => []),
+        api.quotes.getForGarage(data.id).catch(() => []),
       ]);
 
       setProfileEdits(editsRes);
       setDocuments(docsRes);
       setAllServices(allServicesRes);
+      setQuoteRequests(quotesRes);
     } catch (err: any) {
-      setGlobalError(err.message || 'Unable to load workshop details. Ensure the garage slug is correct.');
+      setGlobalError(err.message || 'Unable to load workshop details. Ensure you are authorized to manage this workshop.');
       setActiveGarage(null);
     } finally {
       setLoading(false);
@@ -106,26 +143,34 @@ export const OwnerDashboardPage: React.FC = () => {
       .getMyGarages()
       .then((garages) => {
         setMyGarages(garages || []);
-        if (!slugParam && garages && garages.length > 0) {
-          setGarageInput(garages[0].slug);
-          setSearchParams({ slug: garages[0].slug });
+        if (garages && garages.length > 0) {
+          const matched = slugParam
+            ? garages.find((g) => g.slug === slugParam || String(g.id) === slugParam) || garages[0]
+            : garages[0];
+          setSearchParams({ slug: matched.slug }, { replace: true });
+          loadGarageById(matched.id);
+        } else {
+          setActiveGarage(null);
         }
       })
-      .catch(() => {});
-  }, [slugParam, setSearchParams, refreshUser]);
+      .catch((err: any) => {
+        setGlobalError(err.message || 'Failed to fetch your registered workshops');
+      });
+  }, [refreshUser, loadGarageById]);
 
   useEffect(() => {
-    if (slugParam) {
-      setGarageInput(slugParam);
-      loadGarage(slugParam);
+    if (slugParam && myGarages.length > 0) {
+      const matched = myGarages.find((g) => g.slug === slugParam || String(g.id) === slugParam);
+      if (matched && activeGarage?.id !== matched.id) {
+        loadGarageById(matched.id);
+      }
     }
-  }, [slugParam, loadGarage]);
+  }, [slugParam, myGarages, activeGarage?.id, loadGarageById]);
 
-  const handleLookupSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (garageInput.trim()) {
-      setSearchParams({ slug: garageInput.trim() });
-    }
+  const handleSelectWorkshop = (g: GarageSummaryDto) => {
+    if (activeGarage?.id === g.id) return;
+    setSearchParams({ slug: g.slug });
+    loadGarageById(g.id);
   };
 
   // Submit Profile Edit Proposal
@@ -160,39 +205,220 @@ export const OwnerDashboardPage: React.FC = () => {
     }
   };
 
-  // Photo Upload
-  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !activeGarage) return;
+  // Revoke object URLs on unmount
+  useEffect(() => {
+    return () => {
+      pendingPhotos.forEach((p) => {
+        if (p.previewUrl) URL.revokeObjectURL(p.previewUrl);
+      });
+    };
+  }, [pendingPhotos]);
 
-    try {
-      setUploadingPhoto(true);
-      setPhotoError(null);
-      const isCover = photos.length === 0;
-      const newPhoto = await api.garageManagement.uploadPhoto(
-        activeGarage.id,
-        file,
-        photoCaption.trim() || undefined,
-        isCover
-      );
-      setPhotos([...photos, newPhoto]);
-      setPhotoCaption('');
-      setGlobalSuccess('Workshop photo uploaded successfully.');
-    } catch (err: any) {
-      setPhotoError(err.message || 'Failed to upload photo. Max size is 5MB.');
-    } finally {
-      setUploadingPhoto(false);
-      e.target.value = '';
+  const handleEditStateChange = (newState: string) => {
+    setEditState(newState);
+    const validCities = getCitiesForState(newState);
+    if (editCity && !validCities.includes(editCity)) {
+      setEditCity('');
     }
   };
 
-  // Photo Cover Set
+  // Photo Selection (validates 5MB limit, format, and 7 active photo cap)
+  const handleSelectPhotos = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fileList = e.target.files;
+    if (!fileList || fileList.length === 0 || !activeGarage) return;
+
+    setPhotoError(null);
+    const files = Array.from(fileList);
+    const newPending: PendingPhoto[] = [];
+    const MAX_ALLOWED = 7;
+    const currentTotal = photos.length + pendingPhotos.length;
+
+    if (photos.length > MAX_ALLOWED) {
+      setPhotoError(
+        `This workshop currently has ${photos.length} photos (exceeding the 7-photo limit). You cannot upload new photos until you remove enough photos to bring the total below 7.`
+      );
+      e.target.value = '';
+      return;
+    }
+
+    if (photos.length >= MAX_ALLOWED) {
+      setPhotoError(
+        'Maximum limit of 7 active photos reached (1 cover photo and up to 6 gallery photos). Please delete an existing photo to upload a new one.'
+      );
+      e.target.value = '';
+      return;
+    }
+
+    let oversizeCount = 0;
+    let unsupportedCount = 0;
+    let limitReached = false;
+
+    for (const file of files) {
+      if (currentTotal + newPending.length >= MAX_ALLOWED) {
+        limitReached = true;
+        break;
+      }
+
+      let isInvalid = false;
+      let errorMsg: string | undefined;
+
+      const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
+      if (!validTypes.includes(file.type.toLowerCase())) {
+        unsupportedCount++;
+        isInvalid = true;
+        errorMsg = 'Unsupported format (only JPG, PNG, WebP allowed)';
+      } else if (file.size > 5 * 1024 * 1024) {
+        oversizeCount++;
+        isInvalid = true;
+        errorMsg = `Exceeds 5 MB limit (${(file.size / (1024 * 1024)).toFixed(2)} MB)`;
+      }
+
+      const previewUrl = file.type.startsWith('image/') ? URL.createObjectURL(file) : '';
+      const isFirst = photos.length === 0 && pendingPhotos.length === 0 && newPending.length === 0 && !isInvalid;
+
+      newPending.push({
+        id: `pending-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+        file,
+        previewUrl,
+        caption: '',
+        isCover: isFirst,
+        status: isInvalid ? 'error' : 'idle',
+        errorMessage: errorMsg,
+      });
+    }
+
+    if (limitReached) {
+      setPhotoError(`Maximum limit of ${MAX_ALLOWED} active photos reached (currently have ${photos.length} saved, ${pendingPhotos.length} pending).`);
+    } else if (oversizeCount > 0 || unsupportedCount > 0) {
+      setPhotoError(`Some selected photos have validation errors (marked in red below). Click Remove to discard them before uploading.`);
+    }
+
+    if (newPending.length > 0) {
+      setPendingPhotos((prev) => [...prev, ...newPending]);
+    }
+
+    // Reset input so user can choose replacement or select more immediately
+    e.target.value = '';
+  };
+
+  // Remove a pending photo before uploading
+  const handleRemovePendingPhoto = (id: string) => {
+    setPendingPhotos((prev) => {
+      const target = prev.find((p) => p.id === id);
+      if (target?.previewUrl) {
+        URL.revokeObjectURL(target.previewUrl);
+      }
+      const updated = prev.filter((p) => p.id !== id);
+      const hasSavedCover = photos.some((p) => p.isCover);
+      if (!hasSavedCover && target?.isCover && updated.length > 0) {
+        const nextValid = updated.find((p) => p.status !== 'error') || updated[0];
+        nextValid.isCover = true;
+      }
+      const hasErrorsLeft = updated.some((p) => p.status === 'error');
+      if (!hasErrorsLeft) {
+        setPhotoError(null);
+      }
+      return updated;
+    });
+  };
+
+  const handlePendingCaptionChange = (id: string, caption: string) => {
+    setPendingPhotos((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, caption } : p))
+    );
+  };
+
+  const handleSetPendingCover = (id: string) => {
+    setPendingPhotos((prev) =>
+      prev.map((p) => ({
+        ...p,
+        isCover: p.id === id,
+      }))
+    );
+  };
+
+  const handleClearAllPending = () => {
+    pendingPhotos.forEach((p) => {
+      if (p.previewUrl) URL.revokeObjectURL(p.previewUrl);
+    });
+    setPendingPhotos([]);
+    setPhotoError(null);
+  };
+
+  // Upload all pending photos sequentially
+  const handleUploadPendingPhotos = async () => {
+    if (!activeGarage || pendingPhotos.length === 0 || uploadingPhotos) return;
+
+    const invalidCount = pendingPhotos.filter((p) => p.status === 'error').length;
+    if (invalidCount > 0) {
+      setPhotoError(`Please remove the ${invalidCount} invalid photo(s) before uploading.`);
+      return;
+    }
+
+    setUploadingPhotos(true);
+    setPhotoError(null);
+    let failures = 0;
+    const working = [...pendingPhotos];
+    const newlyUploadedPhotos: GaragePhotoDto[] = [];
+
+    for (let i = 0; i < working.length; i++) {
+      const item = working[i];
+      if (item.status === 'success') continue;
+
+      setUploadProgress(`Uploading ${i + 1} of ${working.length}: ${item.file.name}...`);
+      working[i] = { ...item, status: 'uploading', errorMessage: undefined };
+      setPendingPhotos([...working]);
+
+      try {
+        const isCover = item.isCover || (photos.length === 0 && newlyUploadedPhotos.length === 0);
+        const uploaded = await api.garageManagement.uploadPhoto(
+          activeGarage.id,
+          item.file,
+          item.caption.trim() || undefined,
+          isCover,
+          photos.length + newlyUploadedPhotos.length
+        );
+
+        working[i] = { ...item, status: 'success' };
+        if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+        newlyUploadedPhotos.push(uploaded);
+      } catch (err: any) {
+        failures++;
+        working[i] = {
+          ...item,
+          status: 'error',
+          errorMessage: err.message || 'Upload failed',
+        };
+      }
+      setPendingPhotos([...working]);
+    }
+
+    const remainingPending = working.filter((p) => p.status !== 'success');
+    setPendingPhotos(remainingPending);
+
+    if (newlyUploadedPhotos.length > 0) {
+      setPhotos((prev) => [...prev, ...newlyUploadedPhotos]);
+      setGlobalSuccess(
+        `${newlyUploadedPhotos.length} workshop photo(s) uploaded successfully.` +
+          (failures > 0 ? ` ${failures} photo(s) failed.` : '')
+      );
+    }
+
+    if (failures > 0) {
+      setPhotoError(`${failures} photo upload(s) failed. Check details below and retry.`);
+    }
+
+    setUploadingPhotos(false);
+    setUploadProgress(null);
+  };
+
+  // Set Cover Photo (Saved Photo)
   const handleSetCoverPhoto = async (photoId: number) => {
     if (!activeGarage) return;
     try {
       await api.garageManagement.setCoverPhoto(activeGarage.id, photoId);
-      setPhotos(
-        photos.map((p) => ({
+      setPhotos((prev) =>
+        prev.map((p) => ({
           ...p,
           isCover: p.id === photoId,
         }))
@@ -203,15 +429,27 @@ export const OwnerDashboardPage: React.FC = () => {
     }
   };
 
-  // Photo Delete
+  // Delete Saved Photo from Server
   const handleDeletePhoto = async (photoId: number) => {
-    if (!activeGarage || !window.confirm('Delete this photo?')) return;
+    if (!activeGarage || deletingPhotoId != null) return;
+    if (!window.confirm('Are you sure you want to delete this photo from your workshop gallery?')) return;
+
     try {
+      setDeletingPhotoId(photoId);
       await api.garageManagement.deletePhoto(activeGarage.id, photoId);
-      setPhotos(photos.filter((p) => p.id !== photoId));
-      setGlobalSuccess('Photo removed.');
+      setPhotos((prev) => {
+        const filtered = prev.filter((p) => p.id !== photoId);
+        const wasCover = prev.find((p) => p.id === photoId)?.isCover;
+        if (wasCover && filtered.length > 0) {
+          filtered[0].isCover = true;
+        }
+        return filtered;
+      });
+      setGlobalSuccess('Workshop photo removed from gallery.');
     } catch (err: any) {
       setGlobalError(err.message || 'Failed to delete photo');
+    } finally {
+      setDeletingPhotoId(null);
     }
   };
 
@@ -261,6 +499,92 @@ export const OwnerDashboardPage: React.FC = () => {
     }
   };
 
+  const handleRefreshQuotes = async () => {
+    if (!activeGarage) return;
+    try {
+      const res = await api.quotes.getForGarage(activeGarage.id);
+      setQuoteRequests(res || []);
+      if (selectedQuote) {
+        const updated = res.find((q) => q.id === selectedQuote.id);
+        if (updated) setSelectedQuote(updated);
+      }
+    } catch (err: any) {
+      setGlobalError(err.message || 'Failed to refresh quote requests');
+    }
+  };
+
+  const handleOpenRespondModal = (
+    quote: QuoteRequestDto,
+    action: 'REVIEW' | 'QUOTE' | 'DECLINE' | 'COMPLETE'
+  ) => {
+    setSelectedQuote(quote);
+    setRespondAction(action);
+    setOwnerActionError(null);
+    if (action === 'QUOTE') {
+      setProposedAmount(quote.proposedQuoteAmount || quote.estimatedMinPrice || '');
+      setOwnerNotes(quote.ownerNotes || '');
+    } else if (action === 'DECLINE') {
+      setProposedAmount('');
+      setOwnerNotes('');
+    } else {
+      setProposedAmount('');
+      setOwnerNotes('');
+    }
+  };
+
+  const handleSubmitOwnerResponse = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedQuote || !respondAction) return;
+
+    if (respondAction === 'QUOTE') {
+      if (!proposedAmount || Number(proposedAmount) <= 0) {
+        setOwnerActionError('Please enter a valid positive quotation amount (₹).');
+        return;
+      }
+    }
+
+    try {
+      setOwnerActionLoading(true);
+      setOwnerActionError(null);
+
+      const payload: QuoteOwnerResponseRequest = {
+        action: respondAction,
+        proposedQuoteAmount: respondAction === 'QUOTE' ? Number(proposedAmount) : undefined,
+        ownerNotes: ownerNotes.trim() || undefined,
+      };
+
+      const updated = await api.quotes.ownerResponse(selectedQuote.id, payload);
+      setGlobalSuccess(`Quote ${selectedQuote.referenceNumber} status updated to ${updated.status}.`);
+      setSelectedQuote(null);
+      setRespondAction(null);
+      setProposedAmount('');
+      setOwnerNotes('');
+      await handleRefreshQuotes();
+    } catch (err: any) {
+      setOwnerActionError(err.message || 'Failed to submit response');
+    } finally {
+      setOwnerActionLoading(false);
+    }
+  };
+
+  const handleSendOwnerReply = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedQuote || !replyText.trim()) return;
+
+    try {
+      setReplyLoading(true);
+      setOwnerActionError(null);
+      const updated = await api.quotes.addMessage(selectedQuote.id, replyText.trim());
+      setSelectedQuote(updated);
+      setReplyText('');
+      await handleRefreshQuotes();
+    } catch (err: any) {
+      setOwnerActionError(err.message || 'Failed to send message');
+    } finally {
+      setReplyLoading(false);
+    }
+  };
+
   return (
     <div className="container py-8 max-w-5xl">
       <div className="page-header mb-6">
@@ -270,48 +594,92 @@ export const OwnerDashboardPage: React.FC = () => {
         </p>
       </div>
 
-      {/* Workshop Slug Selector & Quick Select */}
-      <div className="card p-4 mb-6">
-        {myGarages.length > 0 && (
-          <div className="mb-4 pb-3 border-b border-border">
-            <span className="text-xs font-semibold text-secondary block mb-2">
-              Your Registered Workshops:
+      {/* Your Registered Workshop Selector */}
+      {myGarages.length > 0 ? (
+        <div className="card p-5 mb-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+            <div>
+              <h2 className="text-base font-bold text-foreground">Your Registered Workshop</h2>
+              <p className="text-xs text-secondary mt-0.5">
+                Select an authorized workshop to manage its profile, services, photos, and documents
+              </p>
+            </div>
+            <span className="badge badge-secondary text-2xs self-start sm:self-auto">
+              {myGarages.length} {myGarages.length === 1 ? 'Workshop' : 'Workshops'}
             </span>
-            <div className="flex gap-2 flex-wrap">
-              {myGarages.map((g) => (
+          </div>
+
+          <div
+            className="flex flex-wrap gap-2.5 items-center"
+            role="tablist"
+            aria-label="Your registered workshops"
+          >
+            {myGarages.map((g) => {
+              const isSelected = activeGarage?.id === g.id;
+              return (
                 <button
                   key={g.id}
                   type="button"
-                  className={`btn btn-xs ${activeGarage?.slug === g.slug ? 'btn-primary' : 'btn-secondary'}`}
-                  onClick={() => {
-                    setGarageInput(g.slug);
-                    setSearchParams({ slug: g.slug });
+                  role="tab"
+                  aria-selected={isSelected}
+                  onClick={() => handleSelectWorkshop(g)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleSelectWorkshop(g);
+                    }
                   }}
+                  className={`btn text-sm cursor-pointer transition-all ${
+                    isSelected
+                      ? 'btn-primary shadow-md ring-2 ring-primary/40'
+                      : 'btn-outline border-[rgba(235,22,32,0.35)] text-white/90 bg-surface/60 hover:border-primary hover:text-white hover:bg-[rgba(235,22,32,0.1)]'
+                  } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2`}
+                  title={`${g.name} (${g.city}${g.state ? `, ${g.state}` : ''})`}
+                  aria-label={`Select workshop ${g.name} in ${g.city}`}
                 >
-                  🛠️ {g.name}
+                  <span className="font-bold truncate max-w-[200px] sm:max-w-xs">{g.name}</span>
+                  <span className={`text-xs ${isSelected ? 'text-white/90 font-medium' : 'text-secondary'}`}>
+                    • {g.city}
+                  </span>
+                  {g.isVerified && (
+                    <span
+                      className={`text-2xs px-1.5 py-0.5 rounded-full font-bold ${
+                        isSelected ? 'bg-white/20 text-white' : 'bg-success/20 text-success'
+                      }`}
+                      title="Verified Workshop"
+                    >
+                      ✓
+                    </span>
+                  )}
+                  {isSelected && (
+                    <span className="badge bg-white/25 text-white text-2xs font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded-full ml-0.5">
+                      Active
+                    </span>
+                  )}
                 </button>
-              ))}
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        !loading && (
+          <div className="card p-8 mb-6 text-center">
+            <div className="text-4xl mb-3">🏪</div>
+            <h2 className="text-lg font-bold mb-2">No Registered Workshops Found</h2>
+            <p className="text-sm text-secondary max-w-md mx-auto mb-5">
+              You do not currently manage any registered workshops. You can list a new workshop for review or claim an existing workshop you own.
+            </p>
+            <div className="flex gap-3 justify-center flex-wrap">
+              <Link to="/submit-garage" className="btn btn-primary btn-sm">
+                + List a New Workshop
+              </Link>
+              <Link to="/garages" className="btn btn-secondary btn-sm">
+                🔍 Find & Claim Existing Workshop
+              </Link>
             </div>
           </div>
-        )}
-
-        <form onSubmit={handleLookupSubmit} className="flex gap-3 items-center flex-wrap">
-          <label htmlFor="garage-slug-input" className="text-sm font-semibold whitespace-nowrap">
-            Workshop Identifier (Slug):
-          </label>
-          <input
-            id="garage-slug-input"
-            type="text"
-            className="form-control flex-1 max-w-md"
-            placeholder="e.g. speedline-auto-workshop"
-            value={garageInput}
-            onChange={(e) => setGarageInput(e.target.value)}
-          />
-          <button type="submit" className="btn btn-primary btn-sm">
-            Load Workshop
-          </button>
-        </form>
-      </div>
+        )
+      )}
 
       {globalSuccess && (
         <Alert
@@ -391,6 +759,24 @@ export const OwnerDashboardPage: React.FC = () => {
             </button>
             <button
               type="button"
+              className={`tab-btn px-4 py-2 text-sm font-medium border-b-2 flex items-center gap-1.5 ${
+                activeTab === 'quotes' ? 'border-primary text-primary' : 'border-transparent text-secondary'
+              }`}
+              onClick={() => setActiveTab('quotes')}
+            >
+              <span>Quote Requests</span>
+              <span
+                className={`text-2xs px-1.5 py-0.5 rounded-full font-bold ${
+                  quoteRequests.filter((q) => q.status === 'PENDING' || q.status === 'UNDER_REVIEW').length > 0
+                    ? 'bg-primary text-white'
+                    : 'bg-surface text-muted border border-border'
+                }`}
+              >
+                {quoteRequests.length}
+              </span>
+            </button>
+            <button
+              type="button"
               className={`tab-btn px-4 py-2 text-sm font-medium border-b-2 ${
                 activeTab === 'edits' ? 'border-primary text-primary' : 'border-transparent text-secondary'
               }`}
@@ -457,6 +843,458 @@ export const OwnerDashboardPage: React.FC = () => {
             </div>
           )}
 
+          {/* Tab 2: Quote Requests */}
+          {activeTab === 'quotes' && (
+            <div className="space-y-6">
+              {/* Quotes Header Bar */}
+              <div className="card p-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                  <div>
+                    <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                      <span>Customer Quote Requests</span>
+                      <span className="badge badge-secondary text-xs">
+                        {quoteRequests.length} Total
+                      </span>
+                    </h3>
+                    <p className="text-xs text-secondary mt-0.5">
+                      Review vehicle repair requests submitted to {activeGarage.name}, send proposed quotations, and manage repair status.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-xs inline-flex items-center gap-1.5 self-start sm:self-auto cursor-pointer"
+                    onClick={handleRefreshQuotes}
+                  >
+                    <span className="material-symbols-outlined text-sm">refresh</span>
+                    Refresh List
+                  </button>
+                </div>
+
+                {/* Filter Pills */}
+                <div className="flex flex-wrap gap-2 pt-2 border-t border-border">
+                  {[
+                    { key: 'ALL', label: 'All Requests', count: quoteRequests.length },
+                    {
+                      key: 'PENDING',
+                      label: 'Needs Action',
+                      count: quoteRequests.filter(
+                        (q) => q.status === 'PENDING' || q.status === 'UNDER_REVIEW'
+                      ).length,
+                    },
+                    {
+                      key: 'QUOTED',
+                      label: 'Quoted (Awaiting Customer)',
+                      count: quoteRequests.filter((q) => q.status === 'QUOTED').length,
+                    },
+                    {
+                      key: 'ACCEPTED',
+                      label: 'Accepted Bookings',
+                      count: quoteRequests.filter((q) => q.status === 'ACCEPTED').length,
+                    },
+                    {
+                      key: 'HISTORY',
+                      label: 'History (Done / Declined)',
+                      count: quoteRequests.filter(
+                        (q) =>
+                          q.status === 'DECLINED' ||
+                          q.status === 'CANCELLED' ||
+                          q.status === 'COMPLETED'
+                      ).length,
+                    },
+                  ].map((flt) => {
+                    const isSelected = quoteFilter === flt.key;
+                    return (
+                      <button
+                        key={flt.key}
+                        type="button"
+                        onClick={() => setQuoteFilter(flt.key as any)}
+                        className={`text-xs px-3 py-1.5 rounded-full border transition-all flex items-center gap-1.5 cursor-pointer ${
+                          isSelected
+                            ? 'bg-primary border-primary text-white font-bold shadow-sm'
+                            : 'bg-surface border-border text-secondary hover:text-white hover:border-primary/40'
+                        }`}
+                      >
+                        <span>{flt.label}</span>
+                        <span
+                          className={`text-2xs px-1.5 py-0.2 rounded-full ${
+                            isSelected ? 'bg-white/25 text-white' : 'bg-surface-raised text-muted'
+                          }`}
+                        >
+                          {flt.count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Quotes List */}
+              {(() => {
+                const filtered = quoteRequests.filter((q) => {
+                  if (quoteFilter === 'PENDING')
+                    return q.status === 'PENDING' || q.status === 'UNDER_REVIEW';
+                  if (quoteFilter === 'QUOTED') return q.status === 'QUOTED';
+                  if (quoteFilter === 'ACCEPTED') return q.status === 'ACCEPTED';
+                  if (quoteFilter === 'HISTORY')
+                    return (
+                      q.status === 'DECLINED' ||
+                      q.status === 'CANCELLED' ||
+                      q.status === 'COMPLETED'
+                    );
+                  return true;
+                });
+
+                if (filtered.length === 0) {
+                  return (
+                    <div className="card p-10 text-center bg-surface border border-border">
+                      <div className="text-3xl mb-2">📋</div>
+                      <h4 className="text-base font-bold text-white mb-1">
+                        No Quote Requests Found
+                      </h4>
+                      <p className="text-xs text-secondary max-w-md mx-auto">
+                        No customer quote requests match the "{quoteFilter}" filter. When customers
+                        request quotes on your public garage profile, they will show up here.
+                      </p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="space-y-4">
+                    {filtered.map((quote) => {
+                      const isPending = quote.status === 'PENDING';
+                      const isUnderReview = quote.status === 'UNDER_REVIEW';
+                      const isQuoted = quote.status === 'QUOTED';
+                      const isAccepted = quote.status === 'ACCEPTED';
+                      const isCompleted = quote.status === 'COMPLETED';
+                      const isDeclined = quote.status === 'DECLINED';
+                      const isCancelled = quote.status === 'CANCELLED';
+
+                      return (
+                        <div
+                          key={quote.id}
+                          className="card p-5 bg-surface border border-border space-y-4 hover:border-primary/40 transition-colors"
+                        >
+                          {/* Card Header */}
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border pb-3">
+                            <div className="flex items-center gap-2.5 flex-wrap">
+                              <span className="font-mono font-bold text-primary text-sm">
+                                {quote.referenceNumber}
+                              </span>
+                              <span className="text-2xs text-muted">
+                                Submitted:{' '}
+                                {new Date(quote.createdAt).toLocaleDateString('en-IN', {
+                                  day: 'numeric',
+                                  month: 'short',
+                                  year: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })}
+                              </span>
+                            </div>
+
+                            {/* Status Badge */}
+                            <div>
+                              {isPending && (
+                                <span className="badge badge-warning text-xs font-bold uppercase">
+                                  Pending Review
+                                </span>
+                              )}
+                              {isUnderReview && (
+                                <span className="badge bg-blue-500/20 text-blue-400 border border-blue-500/40 text-xs font-bold uppercase">
+                                  Under Review
+                                </span>
+                              )}
+                              {isQuoted && (
+                                <span className="badge bg-purple-500/20 text-purple-300 border border-purple-500/40 text-xs font-bold uppercase">
+                                  Quotation Sent
+                                </span>
+                              )}
+                              {isAccepted && (
+                                <span className="badge badge-success text-xs font-bold uppercase">
+                                  ✓ Customer Accepted
+                                </span>
+                              )}
+                              {isCompleted && (
+                                <span className="badge badge-success text-xs font-bold uppercase">
+                                  ✓ Work Completed
+                                </span>
+                              )}
+                              {isDeclined && (
+                                <span className="badge badge-danger text-xs font-bold uppercase">
+                                  Declined
+                                </span>
+                              )}
+                              {isCancelled && (
+                                <span className="badge badge-secondary text-xs font-bold uppercase">
+                                  Cancelled
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Customer & Vehicle Info Grid */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
+                            {/* Customer */}
+                            <div className="p-3 bg-surface-raised rounded border border-border">
+                              <span className="text-muted block text-2xs uppercase tracking-wider mb-1">
+                                Customer Details
+                              </span>
+                              <div className="font-bold text-white text-sm">
+                                {quote.customerName || 'Customer'}
+                              </div>
+                              <div className="mt-1 space-y-0.5">
+                                <a
+                                  href={`tel:${quote.contactPhone}`}
+                                  className="text-primary font-mono block hover:underline"
+                                >
+                                  📞 {quote.contactPhone}
+                                </a>
+                                {quote.contactEmail && (
+                                  <a
+                                    href={`mailto:${quote.contactEmail}`}
+                                    className="text-secondary block truncate hover:underline"
+                                  >
+                                    ✉️ {quote.contactEmail}
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Vehicle */}
+                            <div className="p-3 bg-surface-raised rounded border border-border">
+                              <span className="text-muted block text-2xs uppercase tracking-wider mb-1">
+                                Vehicle Information
+                              </span>
+                              <div className="font-bold text-white text-sm">
+                                {quote.vehicleMake} {quote.vehicleModel}
+                              </div>
+                              <div className="text-muted mt-1 space-y-0.5">
+                                <div>
+                                  Type: <span className="text-white">{quote.vehicleType}</span>
+                                  {quote.vehicleYear && ` • Year: ${quote.vehicleYear}`}
+                                </div>
+                                {quote.fuelType && (
+                                  <div>
+                                    Fuel: <span className="text-white">{quote.fuelType}</span>
+                                  </div>
+                                )}
+                                {quote.registrationNumber && (
+                                  <div className="font-mono text-white">
+                                    Reg: {quote.registrationNumber}
+                                  </div>
+                                )}
+                                {quote.odometerReading && (
+                                  <div>
+                                    Odometer: {quote.odometerReading.toLocaleString('en-IN')} km
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Quotation & Pricing Summary */}
+                            <div className="p-3 bg-surface-raised rounded border border-border sm:col-span-2 lg:col-span-1">
+                              <span className="text-muted block text-2xs uppercase tracking-wider mb-1">
+                                Quotation & Estimates
+                              </span>
+                              {quote.proposedQuoteAmount ? (
+                                <div>
+                                  <span className="text-2xs text-muted block">Proposed Quotation:</span>
+                                  <span className="text-lg font-mono font-extrabold text-success">
+                                    ₹{Number(quote.proposedQuoteAmount).toLocaleString('en-IN')}
+                                  </span>
+                                  {quote.ownerNotes && (
+                                    <p className="text-2xs text-muted mt-1 italic line-clamp-2">
+                                      "{quote.ownerNotes}"
+                                    </p>
+                                  )}
+                                </div>
+                              ) : quote.estimatedMinPrice ? (
+                                <div>
+                                  <span className="text-2xs text-muted block">Indicative Starting:</span>
+                                  <span className="text-base font-mono font-bold text-primary">
+                                    ₹{Number(quote.estimatedMinPrice).toLocaleString('en-IN')}+
+                                  </span>
+                                  <span className="text-2xs text-muted block mt-0.5">
+                                    Based on service catalogue baseline
+                                  </span>
+                                </div>
+                              ) : (
+                                <div className="text-muted text-xs italic">
+                                  No pricing configured. Manual estimate required.
+                                </div>
+                              )}
+
+                              {quote.preferredDate && (
+                                <div className="mt-2 text-2xs text-secondary border-t border-border pt-1">
+                                  Preferred Date: <strong>{quote.preferredDate}</strong>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Requested Services */}
+                          {quote.services && quote.services.length > 0 && (
+                            <div>
+                              <span className="text-2xs text-muted uppercase tracking-wider block mb-1.5 font-semibold">
+                                Services Requested ({quote.services.length})
+                              </span>
+                              <div className="flex flex-wrap gap-1.5">
+                                {quote.services.map((srv) => (
+                                  <span
+                                    key={srv.id}
+                                    className="badge badge-secondary text-2xs py-1 px-2.5 font-medium"
+                                  >
+                                    {srv.name}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Problem Description & Customer Note */}
+                          <div className="p-3.5 bg-surface-raised rounded-lg border border-border text-xs space-y-2">
+                            <div>
+                              <span className="text-muted font-semibold block text-2xs uppercase tracking-wider">
+                                Vehicle Problem / Required Work:
+                              </span>
+                              <p className="text-white mt-0.5 leading-relaxed">
+                                {quote.problemDescription}
+                              </p>
+                            </div>
+                            {quote.customerMessage && (
+                              <div className="border-t border-border pt-1.5">
+                                <span className="text-muted font-semibold block text-2xs uppercase tracking-wider">
+                                  Customer Instructions:
+                                </span>
+                                <p className="text-secondary mt-0.5 italic">
+                                  "{quote.customerMessage}"
+                                </p>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Messages / Communication Preview */}
+                          {quote.messages && quote.messages.length > 0 && (
+                            <div className="border-t border-border pt-3">
+                              <span className="text-2xs text-muted uppercase tracking-wider block mb-2 font-semibold">
+                                Communication History ({quote.messages.length})
+                              </span>
+                              <div className="space-y-1.5 max-h-36 overflow-y-auto p-2 bg-surface-raised rounded border border-border text-2xs">
+                                {quote.messages.map((m) => {
+                                  const isOwner = m.senderRole === 'OWNER';
+                                  return (
+                                    <div
+                                      key={m.id}
+                                      className={`p-2 rounded ${
+                                        isOwner
+                                          ? 'bg-primary/10 border border-primary/20 text-white ml-4'
+                                          : 'bg-surface border border-border text-white mr-4'
+                                      }`}
+                                    >
+                                      <div className="flex justify-between items-center text-3xs text-muted mb-0.5">
+                                        <span className="font-bold text-white">
+                                          {isOwner ? 'Workshop Owner (You)' : m.senderName}
+                                        </span>
+                                        <span>
+                                          {new Date(m.createdAt).toLocaleTimeString('en-IN', {
+                                            hour: '2-digit',
+                                            minute: '2-digit',
+                                          })}
+                                        </span>
+                                      </div>
+                                      <div className="text-xs">{m.messageText}</div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Action Buttons Strip */}
+                          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {/* If PENDING: allow mark review */}
+                              {isPending && (
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary btn-xs inline-flex items-center gap-1 cursor-pointer"
+                                  onClick={() => handleOpenRespondModal(quote, 'REVIEW')}
+                                >
+                                  <span className="material-symbols-outlined text-xs">
+                                    visibility
+                                  </span>
+                                  Mark Under Review
+                                </button>
+                              )}
+
+                              {/* Allow Quoting if Pending, Under Review, or Quoted */}
+                              {(isPending || isUnderReview || isQuoted) && (
+                                <button
+                                  type="button"
+                                  className="btn btn-primary btn-xs inline-flex items-center gap-1 cursor-pointer"
+                                  onClick={() => handleOpenRespondModal(quote, 'QUOTE')}
+                                >
+                                  <span className="material-symbols-outlined text-xs">
+                                    request_quote
+                                  </span>
+                                  {isQuoted ? 'Update Quotation' : 'Provide Quotation'}
+                                </button>
+                              )}
+
+                              {/* If Accepted: Allow marking complete */}
+                              {isAccepted && (
+                                <button
+                                  type="button"
+                                  className="btn btn-primary btn-xs inline-flex items-center gap-1 cursor-pointer"
+                                  onClick={() => handleOpenRespondModal(quote, 'COMPLETE')}
+                                >
+                                  <span className="material-symbols-outlined text-xs">
+                                    check_circle
+                                  </span>
+                                  Mark Work Completed
+                                </button>
+                              )}
+
+                              {/* Decline button if not completed, declined, or cancelled */}
+                              {!isCompleted && !isDeclined && !isCancelled && (
+                                <button
+                                  type="button"
+                                  className="btn btn-outline btn-xs text-danger inline-flex items-center gap-1 cursor-pointer"
+                                  onClick={() => handleOpenRespondModal(quote, 'DECLINE')}
+                                >
+                                  <span className="material-symbols-outlined text-xs">
+                                    cancel
+                                  </span>
+                                  Decline Request
+                                </button>
+                              )}
+                            </div>
+
+                            {/* Message / Clarification Action */}
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-xs inline-flex items-center gap-1 cursor-pointer"
+                              onClick={() => {
+                                setSelectedQuote(quote);
+                                setRespondAction(null);
+                                setReplyText('');
+                                setOwnerActionError(null);
+                              }}
+                            >
+                              <span className="material-symbols-outlined text-xs">chat</span>
+                              Message Customer
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
           {/* Tab 2: Profile Edit Proposals */}
           {activeTab === 'edits' && (
             <div className="space-y-6">
@@ -501,29 +1339,6 @@ export const OwnerDashboardPage: React.FC = () => {
                       />
                     </div>
                     <div className="form-group">
-                      <label className="form-label">City *</label>
-                      <input
-                        type="text"
-                        required
-                        className="form-control"
-                        value={editCity}
-                        onChange={(e) => setEditCity(e.target.value)}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-2 gap-4">
-                    <div className="form-group">
-                      <label className="form-label">State *</label>
-                      <input
-                        type="text"
-                        required
-                        className="form-control"
-                        value={editState}
-                        onChange={(e) => setEditState(e.target.value)}
-                      />
-                    </div>
-                    <div className="form-group">
                       <label className="form-label">PIN Code *</label>
                       <input
                         type="text"
@@ -531,6 +1346,26 @@ export const OwnerDashboardPage: React.FC = () => {
                         className="form-control"
                         value={editPostalCode}
                         onChange={(e) => setEditPostalCode(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-2 gap-4">
+                    <div className="form-group">
+                      <label className="form-label">State *</label>
+                      <StateSelect
+                        required
+                        value={editState}
+                        onChange={handleEditStateChange}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">City *</label>
+                      <CitySelect
+                        required
+                        selectedState={editState}
+                        value={editCity}
+                        onChange={setEditCity}
                       />
                     </div>
                   </div>
@@ -621,67 +1456,243 @@ export const OwnerDashboardPage: React.FC = () => {
             <div className="card p-6">
               <div className="flex-between items-center mb-4">
                 <div>
-                  <h3 className="section-title text-base">Workshop Photo Gallery</h3>
+                  <h3 className="section-title text-base mb-1">Workshop Photo Gallery</h3>
                   <p className="text-xs text-secondary">
-                    Upload up to 10 high-resolution photos of your garage entrance, workshop bays, and diagnostic equipment.
+                    Upload up to 7 photos of your workshop: 1 cover photo and up to 6 gallery photos (max 5 MB each, JPG/PNG/WebP).
                   </p>
+                </div>
+                <span className="badge badge-primary text-xs font-mono">
+                  {photos.length}/7 Active Photos
+                </span>
+              </div>
+
+              {photos.length > 7 && (
+                <Alert
+                  type="warning"
+                  message={`This workshop currently has ${photos.length} active photos (exceeding the 7-photo limit). Existing photos are safely preserved, but further uploads are blocked until photos are reduced below 7.`}
+                  className="mb-4"
+                />
+              )}
+
+              {photoError && (
+                <Alert
+                  type="error"
+                  message={photoError}
+                  onClose={() => setPhotoError(null)}
+                  className="mb-4"
+                />
+              )}
+
+              {/* Upload controls / file selection bar */}
+              <div className="p-4 bg-surface rounded mb-6 border border-border">
+                <div className="flex-between items-center flex-wrap gap-3">
+                  <div>
+                    <h4 className="text-sm font-semibold mb-1">Add Photos to Gallery</h4>
+                    <p className="text-xs text-muted mb-0">
+                      Select one or more photos to preview and caption before uploading (Max 7 total).
+                    </p>
+                  </div>
+                  <div>
+                    <label
+                      className={`btn btn-primary btn-sm cursor-pointer ${
+                        uploadingPhotos || photos.length + pendingPhotos.length >= 7 || photos.length > 7
+                          ? 'opacity-50 pointer-events-none'
+                          : ''
+                      }`}
+                    >
+                      + Select Photos
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        multiple
+                        className="hidden"
+                        disabled={uploadingPhotos || photos.length + pendingPhotos.length >= 7 || photos.length > 7}
+                        onChange={handleSelectPhotos}
+                      />
+                    </label>
+                  </div>
                 </div>
               </div>
 
-              {photoError && <Alert type="error" message={photoError} className="mb-4" />}
+              {/* Pending Uploads Section (if any selected) */}
+              {pendingPhotos.length > 0 && (
+                <div className="mb-8 p-4 bg-surface-raised rounded border border-warning">
+                  <div className="flex-between items-center mb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="badge badge-warning text-xs">Pending Upload ({pendingPhotos.length})</span>
+                      <span className="text-xs text-muted">Ready to be saved to your workshop gallery</span>
+                    </div>
+                    <div className="flex gap-2 items-center">
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-xs"
+                        onClick={handleClearAllPending}
+                        disabled={uploadingPhotos}
+                      >
+                        Clear All
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-xs"
+                        onClick={handleUploadPendingPhotos}
+                        disabled={uploadingPhotos}
+                      >
+                        {uploadingPhotos ? 'Uploading...' : `Upload All (${pendingPhotos.length})`}
+                      </button>
+                    </div>
+                  </div>
 
-              {/* Upload controls */}
-              <div className="p-4 bg-surface rounded mb-6 flex gap-4 items-center flex-wrap">
-                <div className="form-group mb-0 flex-1">
-                  <label className="form-label text-xs">Photo Caption (Optional)</label>
-                  <input
-                    type="text"
-                    className="form-control text-xs"
-                    placeholder="e.g. Workshop Entrance, Hydraulic Lift"
-                    value={photoCaption}
-                    onChange={(e) => setPhotoCaption(e.target.value)}
-                  />
+                  {uploadProgress && (
+                    <div className="text-xs text-accent font-medium mb-3 flex items-center gap-2">
+                      <span className="spinner"></span>
+                      <span>{uploadProgress}</span>
+                    </div>
+                  )}
+
+                  <div className="photo-preview-grid">
+                    {pendingPhotos.map((item, index) => (
+                      <div
+                        key={item.id}
+                        className={`photo-preview-card card p-3 border ${
+                          item.status === 'error' ? 'border-danger/70 bg-danger/5' : 'border-border bg-surface'
+                        } text-xs space-y-2`}
+                      >
+                        <div className="relative overflow-hidden rounded">
+                          {item.previewUrl ? (
+                            <img
+                              src={item.previewUrl}
+                              alt={`Pending preview ${index + 1}`}
+                              className="photo-preview-thumb"
+                            />
+                          ) : (
+                            <div className="w-full h-40 bg-surface flex flex-col items-center justify-center text-muted">
+                              <span className="material-symbols-outlined text-4xl text-danger">broken_image</span>
+                              <span className="text-xs mt-1 text-danger font-medium">Invalid file</span>
+                            </div>
+                          )}
+                          <span className={`badge ${item.status === 'error' ? 'badge-danger' : 'badge-warning'} absolute top-2 left-2 text-xs`}>
+                            {item.status === 'error' ? '⚠ Error' : 'Pending'}
+                          </span>
+                          {item.isCover && (
+                            <span className="badge badge-accent absolute top-2 left-16 text-xs">
+                              Cover Photo
+                            </span>
+                          )}
+
+                          {/* Top-right prominent remove cross */}
+                          <button
+                            type="button"
+                            aria-label={`Remove photo ${item.file.name}`}
+                            className="btn btn-danger btn-xs absolute top-2 right-2 rounded-full w-7 h-7 flex items-center justify-center p-0 shadow"
+                            disabled={uploadingPhotos}
+                            onClick={() => handleRemovePendingPhoto(item.id)}
+                            title="Remove photo"
+                          >
+                            ✕
+                          </button>
+                        </div>
+
+                        <div className="flex-between items-center text-xs">
+                          <span className="font-semibold truncate text-foreground flex-1 min-w-0" title={item.file.name}>
+                            {item.file.name}
+                          </span>
+                          <span className="text-muted font-mono ml-2">
+                            {(item.file.size / (1024 * 1024)).toFixed(2)} MB
+                          </span>
+                        </div>
+
+                        <div>
+                          <input
+                            type="text"
+                            placeholder="Add optional caption..."
+                            className="form-control text-xs"
+                            value={item.caption}
+                            disabled={uploadingPhotos || item.status === 'error'}
+                            onChange={(e) => handlePendingCaptionChange(item.id, e.target.value)}
+                          />
+                        </div>
+
+                        {item.errorMessage && (
+                          <p className="text-danger text-xs mb-0 font-medium">{item.errorMessage}</p>
+                        )}
+
+                        <div className="flex-between items-center pt-1 border-t border-border">
+                          {!item.isCover && item.status !== 'error' ? (
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-xs"
+                              disabled={uploadingPhotos}
+                              onClick={() => handleSetPendingCover(item.id)}
+                            >
+                              Set as Cover
+                            </button>
+                          ) : (
+                            <span className="text-xs text-accent">
+                              {item.isCover ? 'Default Cover' : ''}
+                            </span>
+                          )}
+
+                          <button
+                            type="button"
+                            className="btn btn-danger btn-xs"
+                            disabled={uploadingPhotos}
+                            onClick={() => handleRemovePendingPhoto(item.id)}
+                          >
+                            ✕ Remove
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <div>
-                  <label className="btn btn-primary btn-sm cursor-pointer mt-4">
-                    {uploadingPhoto ? 'Uploading...' : '+ Upload Photo'}
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp"
-                      className="hidden"
-                      disabled={uploadingPhoto || photos.length >= 10}
-                      onChange={handlePhotoUpload}
-                    />
-                  </label>
-                </div>
+              )}
+
+              {/* Saved Photos Gallery */}
+              <div className="flex-between items-center mb-3">
+                <h4 className="text-sm font-semibold">
+                  Saved Workshop Photos ({photos.length}/7)
+                </h4>
+                {photos.length > 0 && (
+                  <span className="text-xs text-muted">Live on public workshop listing</span>
+                )}
               </div>
 
               {photos.length === 0 ? (
                 <div className="p-8 text-center text-muted border border-dashed border-border rounded">
-                  No workshop photos uploaded yet. (Max 10 photos, JPG/PNG, 5MB max).
+                  No workshop photos saved on server yet. Click "+ Select Photos" above to add photos.
                 </div>
               ) : (
-                <div className="grid grid-3 gap-4">
+                <div className="photo-gallery-grid">
                   {photos.map((photo) => (
-                    <div key={photo.id} className="photo-card card p-2 bg-surface">
+                    <div key={photo.id} className="photo-card card p-2 bg-surface border border-border">
                       <div className="relative aspect-video overflow-hidden rounded mb-2">
                         <img
                           src={api.garages.getPhotoUrl(activeGarage.id, photo.id)}
                           alt={photo.caption || 'Workshop photo'}
                           className="w-full h-full object-cover"
+                          loading="lazy"
                         />
+                        <span className="badge badge-success absolute top-2 right-2 text-xs">
+                          ✓ Saved
+                        </span>
                         {photo.isCover && (
-                          <span className="badge badge-accent absolute top-2 left-2">
-                            Cover Photo
+                          <span className="badge badge-accent absolute top-2 left-2 text-xs">
+                            ★ Cover Photo
                           </span>
                         )}
                       </div>
 
-                      {photo.caption && (
-                        <p className="text-xs text-muted mb-2 truncate">{photo.caption}</p>
-                      )}
+                      <div className="px-1">
+                        {photo.caption ? (
+                          <p className="text-xs text-secondary mb-2 truncate" title={photo.caption}>
+                            {photo.caption}
+                          </p>
+                        ) : (
+                          <p className="text-xs text-muted mb-2 italic">No caption</p>
+                        )}
+                      </div>
 
-                      <div className="flex-between items-center pt-2">
+                      <div className="flex-between items-center pt-2 border-t border-border">
                         {!photo.isCover ? (
                           <button
                             type="button"
@@ -691,15 +1702,16 @@ export const OwnerDashboardPage: React.FC = () => {
                             Set as Cover
                           </button>
                         ) : (
-                          <span className="text-xs text-accent">Default Cover</span>
+                          <span className="text-xs text-accent font-medium">Cover</span>
                         )}
 
                         <button
                           type="button"
                           className="btn btn-danger btn-xs"
+                          disabled={deletingPhotoId === photo.id}
                           onClick={() => handleDeletePhoto(photo.id)}
                         >
-                          Delete
+                          {deletingPhotoId === photo.id ? 'Deleting...' : 'Delete'}
                         </button>
                       </div>
                     </div>
@@ -862,6 +1874,316 @@ export const OwnerDashboardPage: React.FC = () => {
             Enter your garage's slug above to access profile edit proposals, photo uploads, and verification documents.
           </p>
         </div>
+      )}
+      {/* Quote Response & Discussion Modal */}
+      {selectedQuote && (
+        <Modal
+          isOpen={Boolean(selectedQuote)}
+          onClose={() => {
+            setSelectedQuote(null);
+            setRespondAction(null);
+            setOwnerActionError(null);
+          }}
+          title={
+            respondAction === 'QUOTE'
+              ? `Provide Quotation — ${selectedQuote.referenceNumber}`
+              : respondAction === 'DECLINE'
+              ? `Decline Quote Request — ${selectedQuote.referenceNumber}`
+              : respondAction === 'REVIEW'
+              ? `Mark Under Review — ${selectedQuote.referenceNumber}`
+              : respondAction === 'COMPLETE'
+              ? `Mark Work Completed — ${selectedQuote.referenceNumber}`
+              : `Quote Request Discussion — ${selectedQuote.referenceNumber}`
+          }
+          maxWidth="lg"
+        >
+          <div className="space-y-4">
+            {ownerActionError && (
+              <Alert type="error" message={ownerActionError} onClose={() => setOwnerActionError(null)} />
+            )}
+
+            {/* Quick Context Card */}
+            <div className="p-3 bg-surface rounded border border-border text-xs flex justify-between items-center flex-wrap gap-2">
+              <div>
+                <span className="text-muted block text-2xs uppercase">Vehicle & Customer</span>
+                <span className="font-bold text-white">
+                  {selectedQuote.vehicleMake} {selectedQuote.vehicleModel} ({selectedQuote.vehicleType})
+                </span>
+                <span className="text-muted block">
+                  Customer: <strong>{selectedQuote.customerName}</strong> • {selectedQuote.contactPhone}
+                </span>
+              </div>
+              <div className="text-right">
+                <span className="text-muted block text-2xs uppercase">Current Status</span>
+                <span className="badge badge-secondary text-2xs uppercase font-bold">
+                  {selectedQuote.status.replace(/_/g, ' ')}
+                </span>
+              </div>
+            </div>
+
+            {/* Action 1: Provide / Update Quotation */}
+            {respondAction === 'QUOTE' && (
+              <form onSubmit={handleSubmitOwnerResponse} className="space-y-4 pt-1">
+                <div>
+                  <label className="label text-xs">
+                    Proposed Quotation Amount (₹) <span className="text-danger">*</span>
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-muted font-bold">₹</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="1"
+                      className="input pl-8 text-sm font-mono font-bold"
+                      placeholder="e.g. 4500"
+                      value={proposedAmount}
+                      onChange={(e) => setProposedAmount(e.target.value ? Number(e.target.value) : '')}
+                      required
+                    />
+                  </div>
+                  <span className="text-2xs text-muted block mt-1">
+                    Enter your total estimated or itemized quote for the requested services and diagnostic repair.
+                  </span>
+                </div>
+
+                <div>
+                  <label className="label text-xs">
+                    Scope of Work, Assumptions & Notes (Optional)
+                  </label>
+                  <textarea
+                    className="input text-xs min-h-[90px]"
+                    placeholder="Describe included genuine parts, labor, diagnostic work, warranty, or necessary inspection conditions..."
+                    value={ownerNotes}
+                    onChange={(e) => setOwnerNotes(e.target.value)}
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    className="btn btn-secondary text-xs"
+                    onClick={() => setRespondAction(null)}
+                    disabled={ownerActionLoading}
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn btn-primary text-xs flex items-center gap-1.5"
+                    disabled={ownerActionLoading}
+                  >
+                    {ownerActionLoading ? (
+                      'Sending Quotation...'
+                    ) : (
+                      <>
+                        <span className="material-symbols-outlined text-sm">send</span>
+                        Send Quotation to Customer
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* Action 2: Decline Request */}
+            {respondAction === 'DECLINE' && (
+              <form onSubmit={handleSubmitOwnerResponse} className="space-y-4 pt-1">
+                <div className="p-3 bg-danger/10 border border-danger/30 rounded text-xs text-danger">
+                  ⚠️ Declining this request will inform the customer that your workshop cannot take on this work at this time.
+                </div>
+
+                <div>
+                  <label className="label text-xs">Reason for Declining (Optional)</label>
+                  <textarea
+                    className="input text-xs min-h-[80px]"
+                    placeholder="e.g. Workshop schedule is currently at full capacity, or specialized parts are unavailable..."
+                    value={ownerNotes}
+                    onChange={(e) => setOwnerNotes(e.target.value)}
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    className="btn btn-secondary text-xs"
+                    onClick={() => setRespondAction(null)}
+                    disabled={ownerActionLoading}
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn btn-danger text-xs"
+                    disabled={ownerActionLoading}
+                  >
+                    {ownerActionLoading ? 'Declining...' : 'Confirm Decline'}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* Action 3: Mark Under Review */}
+            {respondAction === 'REVIEW' && (
+              <form onSubmit={handleSubmitOwnerResponse} className="space-y-4 pt-1">
+                <p className="text-xs text-secondary">
+                  Marking this quote as <strong>Under Review</strong> signals to the customer that your mechanics are reviewing the diagnostic details and preparing an estimate.
+                </p>
+
+                <div>
+                  <label className="label text-xs">Internal / Customer Note (Optional)</label>
+                  <input
+                    type="text"
+                    className="input text-xs"
+                    placeholder="e.g. Checking spare parts inventory..."
+                    value={ownerNotes}
+                    onChange={(e) => setOwnerNotes(e.target.value)}
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    className="btn btn-secondary text-xs"
+                    onClick={() => setRespondAction(null)}
+                    disabled={ownerActionLoading}
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn btn-primary text-xs"
+                    disabled={ownerActionLoading}
+                  >
+                    {ownerActionLoading ? 'Updating...' : 'Confirm Under Review'}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* Action 4: Complete Work */}
+            {respondAction === 'COMPLETE' && (
+              <form onSubmit={handleSubmitOwnerResponse} className="space-y-4 pt-1">
+                <p className="text-xs text-secondary">
+                  Mark this repair job as <strong>Completed</strong>. This moves the booking to your workshop history.
+                </p>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    className="btn btn-secondary text-xs"
+                    onClick={() => setRespondAction(null)}
+                    disabled={ownerActionLoading}
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn btn-primary text-xs"
+                    disabled={ownerActionLoading}
+                  >
+                    {ownerActionLoading ? 'Saving...' : 'Mark Completed'}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* Default: Communication Thread & Discussion */}
+            {!respondAction && (
+              <div className="space-y-3 pt-1">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-bold text-white">Conversation & Updates</span>
+                  <div className="flex gap-1.5">
+                    {(selectedQuote.status === 'PENDING' || selectedQuote.status === 'UNDER_REVIEW' || selectedQuote.status === 'QUOTED') && (
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-xs inline-flex items-center gap-1"
+                        onClick={() => setRespondAction('QUOTE')}
+                      >
+                        <span className="material-symbols-outlined text-xs">request_quote</span>
+                        {selectedQuote.status === 'QUOTED' ? 'Revise Quote' : 'Provide Quote'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Messages Box */}
+                <div className="p-3 bg-surface rounded border border-border max-h-52 overflow-y-auto space-y-2 text-xs">
+                  {selectedQuote.messages && selectedQuote.messages.length > 0 ? (
+                    selectedQuote.messages.map((m) => {
+                      const isOwner = m.senderRole === 'OWNER';
+                      return (
+                        <div
+                          key={m.id}
+                          className={`p-2.5 rounded ${
+                            isOwner
+                              ? 'bg-primary/10 border border-primary/20 text-white ml-6'
+                              : 'bg-surface-raised border border-border text-white mr-6'
+                          }`}
+                        >
+                          <div className="flex justify-between items-center text-3xs text-muted mb-1">
+                            <span className="font-bold text-white">
+                              {isOwner ? 'You (Workshop Owner)' : m.senderName}
+                            </span>
+                            <span>
+                              {new Date(m.createdAt).toLocaleTimeString('en-IN', {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                            </span>
+                          </div>
+                          <div>{m.messageText}</div>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="text-center py-4 text-xs text-muted">
+                      No communication history yet. Send a message to the customer below.
+                    </div>
+                  )}
+                </div>
+
+                {/* Send Reply Input */}
+                <form onSubmit={handleSendOwnerReply} className="flex gap-2">
+                  <input
+                    type="text"
+                    className="input text-xs flex-1"
+                    placeholder="Type a message or question to the vehicle owner..."
+                    value={replyText}
+                    onChange={(e) => setReplyText(e.target.value)}
+                    disabled={replyLoading}
+                  />
+                  <button
+                    type="submit"
+                    className="btn btn-primary btn-sm flex items-center gap-1"
+                    disabled={replyLoading || !replyText.trim()}
+                  >
+                    {replyLoading ? (
+                      'Sending...'
+                    ) : (
+                      <>
+                        <span className="material-symbols-outlined text-sm">send</span>
+                        Send
+                      </>
+                    )}
+                  </button>
+                </form>
+
+                <div className="flex justify-end pt-2 border-t border-border">
+                  <button
+                    type="button"
+                    className="btn btn-secondary text-xs"
+                    onClick={() => {
+                      setSelectedQuote(null);
+                      setRespondAction(null);
+                    }}
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </Modal>
       )}
     </div>
   );

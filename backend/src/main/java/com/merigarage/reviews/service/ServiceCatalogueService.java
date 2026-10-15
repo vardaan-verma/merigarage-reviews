@@ -44,6 +44,9 @@ public class ServiceCatalogueService {
         if (request == null) {
             throw new ValidationException("Create service request cannot be null.");
         }
+        if (serviceRepository.existsByNameIgnoreCase(request.name().trim())) {
+            throw new ValidationException("A catalogue service with name '" + request.name().trim() + "' already exists.");
+        }
 
         String baseSlug = com.merigarage.reviews.service.GarageService.toSlug(request.name());
         String slug = baseSlug;
@@ -71,6 +74,9 @@ public class ServiceCatalogueService {
         }
         if (request == null) {
             throw new ValidationException("Update service request cannot be null.");
+        }
+        if (serviceRepository.existsByNameIgnoreCaseAndIdNot(request.name().trim(), serviceId)) {
+            throw new ValidationException("A catalogue service with name '" + request.name().trim() + "' already exists.");
         }
 
         Service service = serviceRepository.findById(serviceId)
@@ -119,6 +125,25 @@ public class ServiceCatalogueService {
     }
 
     @Transactional
+    public void associateServicesWithGarage(Long garageId, List<Integer> serviceIds) {
+        if (serviceIds == null || serviceIds.isEmpty()) return;
+        Garage garage = garageRepository.findById(garageId)
+                .orElseThrow(() -> new ResourceNotFoundException("Garage not found with id: " + garageId));
+        for (Integer serviceId : serviceIds) {
+            if (serviceId == null) continue;
+            Service service = serviceRepository.findById(serviceId)
+                    .orElseThrow(() -> new ValidationException("Invalid service ID: " + serviceId));
+            if (!Boolean.TRUE.equals(service.getIsActive())) {
+                throw new ValidationException("Cannot associate inactive service: " + service.getName());
+            }
+            GarageServiceId compositeId = new GarageServiceId(garageId, serviceId);
+            if (!garageServiceRepository.existsById(compositeId)) {
+                garageServiceRepository.save(new GarageService(garage, service, null, true));
+            }
+        }
+    }
+
+    @Transactional
     public void disassociateServiceFromGarage(Long garageId, Integer serviceId) {
         GarageServiceId compositeId = new GarageServiceId(garageId, serviceId);
         if (garageServiceRepository.existsById(compositeId)) {
@@ -130,6 +155,10 @@ public class ServiceCatalogueService {
         return serviceRepository.findByIsActiveTrueOrderByDisplayOrderAsc();
     }
 
+    public List<Service> getAllServicesForAdmin() {
+        return serviceRepository.findAllByOrderByDisplayOrderAscIdAsc();
+    }
+
     public Service getServiceById(Integer serviceId) {
         return serviceRepository.findById(serviceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Catalogue service not found with id: " + serviceId));
@@ -137,5 +166,15 @@ public class ServiceCatalogueService {
 
     public List<GarageService> getServicesForGarage(Long garageId) {
         return garageServiceRepository.findByGarageId(garageId);
+    }
+
+    public java.util.Map<Long, List<String>> getServiceNamesForGarages(List<Long> garageIds) {
+        if (garageIds == null || garageIds.isEmpty()) return java.util.Map.of();
+        List<GarageService> list = garageServiceRepository.findActiveServicesByGarageIds(garageIds);
+        java.util.Map<Long, List<String>> map = new java.util.HashMap<>();
+        for (GarageService gs : list) {
+            map.computeIfAbsent(gs.getGarage().getId(), k -> new java.util.ArrayList<>()).add(gs.getService().getName());
+        }
+        return map;
     }
 }

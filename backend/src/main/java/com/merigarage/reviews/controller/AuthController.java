@@ -2,9 +2,13 @@ package com.merigarage.reviews.controller;
 
 import com.merigarage.reviews.domain.User;
 import com.merigarage.reviews.domain.enums.RoleName;
+import com.merigarage.reviews.exception.ValidationException;
 import com.merigarage.reviews.security.SecurityContextService;
 import com.merigarage.reviews.security.UserPrincipal;
+import com.merigarage.reviews.security.oauth.GoogleTokenPayload;
+import com.merigarage.reviews.security.oauth.GoogleTokenVerifier;
 import com.merigarage.reviews.service.UserService;
+import com.merigarage.reviews.service.dto.GoogleAuthRequest;
 import com.merigarage.reviews.service.dto.LoginRequest;
 import com.merigarage.reviews.service.dto.RegisterUserRequest;
 import com.merigarage.reviews.service.dto.UserDto;
@@ -37,17 +41,20 @@ public class AuthController {
     private final SecurityContextRepository securityContextRepository;
     private final SecurityContextService securityContextService;
     private final com.merigarage.reviews.security.CustomUserDetailsService customUserDetailsService;
+    private final GoogleTokenVerifier googleTokenVerifier;
 
     public AuthController(UserService userService,
                           AuthenticationManager authenticationManager,
                           SecurityContextRepository securityContextRepository,
                           SecurityContextService securityContextService,
-                          com.merigarage.reviews.security.CustomUserDetailsService customUserDetailsService) {
+                          com.merigarage.reviews.security.CustomUserDetailsService customUserDetailsService,
+                          GoogleTokenVerifier googleTokenVerifier) {
         this.userService = userService;
         this.authenticationManager = authenticationManager;
         this.securityContextRepository = securityContextRepository;
         this.securityContextService = securityContextService;
         this.customUserDetailsService = customUserDetailsService;
+        this.googleTokenVerifier = googleTokenVerifier;
     }
 
     @PostMapping("/register")
@@ -80,6 +87,45 @@ public class AuthController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
                     "error", "Unauthorized",
                     "message", "Invalid email or password."
+            ));
+        }
+    }
+
+    @PostMapping("/google")
+    public ResponseEntity<?> googleAuth(@Valid @RequestBody GoogleAuthRequest request,
+                                        HttpServletRequest httpRequest,
+                                        HttpServletResponse httpResponse) {
+        try {
+            GoogleTokenPayload payload = googleTokenVerifier.verify(request.credential());
+            User user = userService.loginOrRegisterWithGoogle(payload);
+
+            UserPrincipal principal = (UserPrincipal) customUserDetailsService.loadUserByUsername(user.getEmail());
+            Authentication authentication = new UsernamePasswordAuthenticationToken(
+                    principal,
+                    null,
+                    principal.getAuthorities()
+            );
+
+            SecurityContext context = SecurityContextHolder.createEmptyContext();
+            context.setAuthentication(authentication);
+            SecurityContextHolder.setContext(context);
+            securityContextRepository.saveContext(context, httpRequest, httpResponse);
+
+            return ResponseEntity.ok(UserDto.fromPrincipal(principal));
+        } catch (ValidationException ex) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                    "error", "Bad Request",
+                    "message", ex.getMessage()
+            ));
+        } catch (AuthenticationException ex) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                    "error", "Unauthorized",
+                    "message", ex.getMessage()
+            ));
+        } catch (Exception ex) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                    "error", "Internal Server Error",
+                    "message", "An unexpected error occurred during Google authentication."
             ));
         }
     }

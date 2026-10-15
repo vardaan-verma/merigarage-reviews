@@ -11,12 +11,15 @@ import com.merigarage.reviews.exception.ValidationException;
 import com.merigarage.reviews.repository.RoleRepository;
 import com.merigarage.reviews.repository.UserRepository;
 import com.merigarage.reviews.repository.UserRoleRepository;
+import com.merigarage.reviews.security.oauth.GoogleTokenPayload;
 import com.merigarage.reviews.service.dto.RegisterUserRequest;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.Locale;
+import java.util.UUID;
 
 @Service
 @Transactional(readOnly = true)
@@ -83,6 +86,55 @@ public class UserService {
         String normalizedEmail = normalizeEmail(email);
         return userRepository.findByEmail(normalizedEmail)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with email: " + normalizedEmail));
+    }
+
+    @Transactional
+    public User loginOrRegisterWithGoogle(GoogleTokenPayload payload) {
+        if (payload == null || payload.email() == null || payload.email().isBlank()) {
+            throw new ValidationException("Google user profile must contain a valid email.");
+        }
+
+        String normalizedEmail = normalizeEmail(payload.email());
+        return userRepository.findByEmail(normalizedEmail)
+                .map(existingUser -> {
+                    if (existingUser.getStatus() == UserStatus.SUSPENDED) {
+                        throw new ValidationException("Account is suspended. Please contact platform support.");
+                    }
+                    if (existingUser.getStatus() == UserStatus.DEACTIVATED) {
+                        throw new ValidationException("Account is deactivated.");
+                    }
+                    if (existingUser.getEmailVerifiedAt() == null) {
+                        existingUser.setEmailVerifiedAt(LocalDateTime.now());
+                    }
+                    if ((existingUser.getFullName() == null || existingUser.getFullName().isBlank())
+                            && payload.name() != null && !payload.name().isBlank()) {
+                        existingUser.setFullName(payload.name().trim());
+                    }
+                    return userRepository.save(existingUser);
+                })
+                .orElseGet(() -> {
+                    String fullName = (payload.name() != null && !payload.name().isBlank())
+                            ? payload.name().trim()
+                            : normalizedEmail.split("@")[0];
+
+                    User newUser = new User();
+                    newUser.setEmail(normalizedEmail);
+                    newUser.setFullName(fullName);
+                    // Generate strong non-usable password hash for OAuth-created account
+                    newUser.setPasswordHash(passwordEncoder.encode(UUID.randomUUID().toString()));
+                    newUser.setStatus(UserStatus.ACTIVE);
+                    newUser.setEmailVerifiedAt(LocalDateTime.now());
+
+                    User savedUser = userRepository.save(newUser);
+
+                    Role userRole = roleRepository.findByName(RoleName.ROLE_USER)
+                            .orElseThrow(() -> new ResourceNotFoundException("Default role ROLE_USER not found in database."));
+
+                    UserRole mapping = new UserRole(savedUser, userRole);
+                    userRoleRepository.save(mapping);
+
+                    return savedUser;
+                });
     }
 
     public String normalizeEmail(String email) {

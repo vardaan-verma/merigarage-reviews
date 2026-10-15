@@ -9,6 +9,7 @@ interface AuthContextType {
   isAdmin: boolean;
   isGarageOwner: boolean;
   login: (email: string, password: string) => Promise<UserDto>;
+  loginWithGoogle: (credential: string) => Promise<UserDto>;
   register: (data: { email: string; password: string; fullName: string; phoneNumber?: string }) => Promise<UserDto>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -22,7 +23,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<UserDto | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const refreshUser = async () => {
+  const refreshUser = React.useCallback(async () => {
     try {
       const currentUser = await api.auth.getCurrentUser();
       setUser(currentUser);
@@ -31,65 +32,93 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     refreshUser();
-  }, []);
+  }, [refreshUser]);
 
-  const login = async (email: string, password: string): Promise<UserDto> => {
+  const login = React.useCallback(async (email: string, password: string): Promise<UserDto> => {
     const loggedIn = await api.auth.login(email, password);
     setUser(loggedIn);
     return loggedIn;
-  };
+  }, []);
 
-  const register = async (data: {
+  const loginWithGoogle = React.useCallback(async (credential: string): Promise<UserDto> => {
+    const loggedIn = await api.auth.googleAuth(credential);
+    setUser(loggedIn);
+    return loggedIn;
+  }, []);
+
+  const register = React.useCallback(async (data: {
     email: string;
     password: string;
     fullName: string;
     phoneNumber?: string;
   }): Promise<UserDto> => {
     const registered = await api.auth.register(data);
-    // After registration, auto login or leave for manual login
     return registered;
-  };
+  }, []);
 
-  const logout = async () => {
+  const logout = React.useCallback(async () => {
     try {
       await api.auth.logout();
     } finally {
       setUser(null);
     }
-  };
+  }, []);
 
-  const hasRole = (role: RoleName): boolean => {
-    return !!user?.roles?.includes(role);
-  };
+  const hasRole = React.useCallback(
+    (role: RoleName): boolean => {
+      return !!user?.roles?.includes(role);
+    },
+    [user?.roles]
+  );
 
-  const hasPermission = (permission: AdminPermissionCode): boolean => {
-    return !!user?.permissions?.includes(permission);
-  };
+  const hasPermission = React.useCallback(
+    (permission: AdminPermissionCode): boolean => {
+      return !!user?.permissions?.includes(permission);
+    },
+    [user?.permissions]
+  );
 
   const isAuthenticated = !!user;
   const isAdmin = hasRole('ROLE_ADMIN');
   const isGarageOwner = hasRole('ROLE_GARAGE_OWNER');
 
+  const contextValue = React.useMemo<AuthContextType>(
+    () => ({
+      user,
+      loading,
+      isAuthenticated,
+      isAdmin,
+      isGarageOwner,
+      login,
+      loginWithGoogle,
+      register,
+      logout,
+      refreshUser,
+      hasRole,
+      hasPermission,
+    }),
+    [
+      user,
+      loading,
+      isAuthenticated,
+      isAdmin,
+      isGarageOwner,
+      login,
+      loginWithGoogle,
+      register,
+      logout,
+      refreshUser,
+      hasRole,
+      hasPermission,
+    ]
+  );
+
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        loading,
-        isAuthenticated,
-        isAdmin,
-        isGarageOwner,
-        login,
-        register,
-        logout,
-        refreshUser,
-        hasRole,
-        hasPermission,
-      }}
-    >
+    <AuthContext.Provider value={contextValue}>
       {children}
     </AuthContext.Provider>
   );

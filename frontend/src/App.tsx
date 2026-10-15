@@ -14,6 +14,7 @@ import { RegisterPage } from './pages/RegisterPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { SubmitGaragePage } from './pages/SubmitGaragePage';
 import { MyClaimsPage } from './pages/MyClaimsPage';
+import { MyQuotesPage } from './pages/MyQuotesPage';
 import { OwnerDashboardPage } from './pages/OwnerDashboardPage';
 import { AdminDashboardPage } from './pages/AdminDashboardPage';
 
@@ -47,6 +48,7 @@ export function App() {
               <Route path="/garages" element={<GaragesPage />} />
               <Route path="/garages/:slug" element={<GarageDetailPage />} />
               <Route path="/services" element={<ServicesPage />} />
+              <Route path="/services/:serviceSlug" element={<ServicesPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
 
@@ -72,6 +74,14 @@ export function App() {
                 element={
                   <ProtectedRoute>
                     <MyClaimsPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/my-quotes"
+                element={
+                  <ProtectedRoute>
+                    <MyQuotesPage />
                   </ProtectedRoute>
                 }
               />

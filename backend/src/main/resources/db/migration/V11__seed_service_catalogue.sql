@@ -1,0 +1,40 @@
+-- V11: Seed Initial Automotive Service Catalogue
+-- Engine: InnoDB, Charset: utf8mb4
+
+INSERT INTO services (name, slug, category, description, is_active, display_order) VALUES
+('General Car Servicing', 'general-car-servicing', 'PERIODIC_MAINTENANCE', 'Comprehensive bumper-to-bumper vehicle inspection, essential fluid top-ups, filter checks, and routine safety servicing.', TRUE, 1),
+('Oil and Filter Change', 'oil-and-filter-change', 'PERIODIC_MAINTENANCE', 'Engine oil drainage and refill with manufacturer-recommended grade, oil filter renewal, and lubrication inspection.', TRUE, 2),
+('Engine Repair', 'engine-repair', 'MECHANICAL_REPAIR', 'Complete mechanical engine repair including head gasket replacement, timing belt or chain servicing, and engine overhauls.', TRUE, 3),
+('Engine Diagnostics', 'engine-diagnostics', 'MECHANICAL_REPAIR', 'Advanced OBD-II computerized scanning, check engine light diagnosis, sensor testing, and error code troubleshooting.', TRUE, 4),
+('Brake Repair and Replacement', 'brake-repair-and-replacement', 'MECHANICAL_REPAIR', 'Brake pad and shoe replacement, disc rotor skimming, caliper servicing, and hydraulic brake fluid flushing.', TRUE, 5),
+('Clutch Repair', 'clutch-repair', 'MECHANICAL_REPAIR', 'Clutch plate and pressure plate replacement, clutch release bearing renewal, and flywheel inspection or resurfacing.', TRUE, 6),
+('Transmission and Gearbox Repair', 'transmission-and-gearbox-repair', 'MECHANICAL_REPAIR', 'Manual and automatic gearbox inspection, transmission fluid replacement, gear synchronizer repair, and overhaul.', TRUE, 7),
+('AC Repair and Gas Refill', 'ac-repair-and-gas-refill', 'ELECTRICAL', 'Air conditioning refrigerant recharge, compressor servicing, cooling coil cleaning, leak testing, and cabin filter renewal.', TRUE, 8),
+('Battery Testing and Replacement', 'battery-testing-and-replacement', 'ELECTRICAL', 'Battery health diagnosis, alternator charging test, terminal cleaning, and installation of certified replacement batteries.', TRUE, 9),
+('Tyre Replacement', 'tyre-replacement', 'WHEELS_AND_TYRES', 'Tread depth assessment, tyre mounting, computerized balancing, and new tyre fitting across all major brands.', TRUE, 10),
+('Wheel Alignment', 'wheel-alignment', 'WHEELS_AND_TYRES', 'Precision computerized 3D laser wheel alignment for camber, caster, and toe angles to ensure balanced vehicle handling.', TRUE, 11),
+('Wheel Balancing', 'wheel-balancing', 'WHEELS_AND_TYRES', 'Dynamic high-speed computerized wheel balancing to eliminate steering vibrations and ensure smooth, even tyre wear.', TRUE, 12),
+('Puncture Repair', 'puncture-repair', 'WHEELS_AND_TYRES', 'Tubeless tyre puncture repair, mushroom patch repair, valve stem replacement, and digital tyre pressure calibration.', TRUE, 13),
+('Suspension Repair', 'suspension-repair', 'MECHANICAL_REPAIR', 'Shock absorber and strut replacement, suspension coil spring inspection, ball joint, and control arm bushing renewal.', TRUE, 14),
+('Steering System Repair', 'steering-system-repair', 'MECHANICAL_REPAIR', 'Power steering pump and rack repair, tie rod replacement, steering column alignment, and hydraulic fluid flush.', TRUE, 15),
+('Electrical System Repair', 'electrical-system-repair', 'ELECTRICAL', 'Alternator servicing, starter motor replacement, fuse box inspection, and auto electrical circuit troubleshooting.', TRUE, 16),
+('Car Wiring and Electronics', 'car-wiring-and-electronics', 'ELECTRICAL', 'Complete wiring harness inspection, short-circuit resolution, ECU sensor testing, and electronic troubleshooting.', TRUE, 17),
+('Denting and Body Repair', 'denting-and-body-repair', 'BODY_AND_PAINT', 'Panel beating, paintless dent removal (PDR), fender straightening, and chassis alignment after accidental damage.', TRUE, 18),
+('Painting and Repainting', 'painting-and-repainting', 'BODY_AND_PAINT', 'Computerized color matching, primer preparation, scratch repair, and high-gloss baked oven spray painting.', TRUE, 19),
+('Windshield and Glass Repair', 'windshield-and-glass-repair', 'BODY_AND_PAINT', 'Front and rear windshield replacement, side window glass fitting, chip repair, and waterproof silicone sealant application.', TRUE, 20),
+('Car Washing', 'car-washing', 'BODY_AND_PAINT', 'High-pressure foam exterior body wash, underbody chassis cleaning, door jamb wipe-down, and tyre dressing.', TRUE, 21),
+('Interior Cleaning', 'interior-cleaning', 'BODY_AND_PAINT', 'Deep cabin vacuuming, upholstery and seat fabric shampooing, roof liner cleaning, and dashboard UV protection conditioning.', TRUE, 22),
+('Full Car Detailing', 'full-car-detailing', 'BODY_AND_PAINT', 'Comprehensive exterior multi-stage paint correction, interior steam deep cleaning, engine bay dressing, and trim restoration.', TRUE, 23),
+('Ceramic Coating and Paint Protection', 'ceramic-coating-and-paint-protection', 'BODY_AND_PAINT', 'Multi-layer 9H nano-ceramic quartz coating, hydrophobic paint sealing, and paint protection film (PPF) application.', TRUE, 24),
+('Car Accessories Installation', 'car-accessories-installation', 'ELECTRICAL', 'Installation of touch infotainment systems, reverse parking cameras, dashcams, LED headlights, and security alarms.', TRUE, 25),
+('Periodic Maintenance and Inspection', 'periodic-maintenance-and-inspection', 'PERIODIC_MAINTENANCE', 'Scheduled kilometer interval service, multi-point safety inspection, brake adjustment, and preventive vehicle diagnostics.', TRUE, 26),
+('Roadside Assistance', 'roadside-assistance', 'MECHANICAL_REPAIR', 'On-demand emergency breakdown assistance, roadside puncture repair, on-site jump start, and emergency fuel delivery.', TRUE, 27),
+('Towing Service', 'towing-service', 'MECHANICAL_REPAIR', 'Flatbed and wheel-lift towing service for vehicle breakdowns, accidental damage recovery, and transit to repair facilities.', TRUE, 28),
+('Electric Vehicle (EV) Servicing', 'electric-vehicle-ev-servicing', 'MECHANICAL_REPAIR', 'EV powertrain diagnostics, high-voltage battery health inspection, regenerative braking maintenance, and cooling system servicing.', TRUE, 29),
+('Hybrid Vehicle Servicing', 'hybrid-vehicle-servicing', 'MECHANICAL_REPAIR', 'Dual-powertrain diagnostics, hybrid battery state-of-health testing, inverter cooling inspection, and electric motor maintenance.', TRUE, 30)
+ON DUPLICATE KEY UPDATE
+    name = VALUES(name),
+    category = VALUES(category),
+    description = VALUES(description),
+    is_active = VALUES(is_active),
+    display_order = VALUES(display_order);

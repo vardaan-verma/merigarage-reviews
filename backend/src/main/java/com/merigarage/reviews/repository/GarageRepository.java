@@ -45,5 +45,39 @@ public interface GarageRepository extends JpaRepository<Garage, Long> {
     List<Garage> findByOwnerId(Long ownerId);
 
     List<Garage> findByCreatedBy_Id(Long createdByUserId);
+
+    @Query("SELECT DISTINCT g FROM Garage g WHERE g.owner.id = :userId OR (g.owner IS NULL AND g.createdBy.id = :userId)")
+    List<Garage> findByOwnerOrCreator(@Param("userId") Long userId);
+
+    @Query(
+            value = """
+                SELECT DISTINCT g FROM Garage g
+                LEFT JOIN GarageService gs ON gs.garage.id = g.id AND gs.isAvailable = true
+                LEFT JOIN gs.service s ON s.isActive = true
+                WHERE g.approvalStatus = :approvalStatus
+                  AND (:city IS NULL OR LOWER(g.city) = LOWER(:city))
+                  AND (:isVerified IS NULL OR g.isVerified = :isVerified)
+                  AND (:serviceId IS NULL OR (gs.service.id = :serviceId AND gs.isAvailable = true AND s.isActive = true))
+                  AND (:serviceSlug IS NULL OR (s.slug = :serviceSlug AND gs.isAvailable = true AND s.isActive = true))
+            """,
+            countQuery = """
+                SELECT COUNT(DISTINCT g) FROM Garage g
+                LEFT JOIN GarageService gs ON gs.garage.id = g.id AND gs.isAvailable = true
+                LEFT JOIN gs.service s ON s.isActive = true
+                WHERE g.approvalStatus = :approvalStatus
+                  AND (:city IS NULL OR LOWER(g.city) = LOWER(:city))
+                  AND (:isVerified IS NULL OR g.isVerified = :isVerified)
+                  AND (:serviceId IS NULL OR (gs.service.id = :serviceId AND gs.isAvailable = true AND s.isActive = true))
+                  AND (:serviceSlug IS NULL OR (s.slug = :serviceSlug AND gs.isAvailable = true AND s.isActive = true))
+            """
+    )
+    org.springframework.data.domain.Page<Garage> findApprovedWithFilters(
+            @Param("approvalStatus") GarageApprovalStatus approvalStatus,
+            @Param("city") String city,
+            @Param("isVerified") Boolean isVerified,
+            @Param("serviceId") Integer serviceId,
+            @Param("serviceSlug") String serviceSlug,
+            org.springframework.data.domain.Pageable pageable
+    );
 }
 

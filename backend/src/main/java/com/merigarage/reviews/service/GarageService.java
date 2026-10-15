@@ -18,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.text.Normalizer;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.regex.Pattern;
 
 @Service
@@ -29,11 +30,14 @@ public class GarageService {
 
     private final GarageRepository garageRepository;
     private final GarageApprovalAuditRepository auditRepository;
+    private final ServiceCatalogueService serviceCatalogueService;
 
     public GarageService(GarageRepository garageRepository,
-                         GarageApprovalAuditRepository auditRepository) {
+                         GarageApprovalAuditRepository auditRepository,
+                         ServiceCatalogueService serviceCatalogueService) {
         this.garageRepository = garageRepository;
         this.auditRepository = auditRepository;
+        this.serviceCatalogueService = serviceCatalogueService;
     }
 
     @Transactional
@@ -86,7 +90,13 @@ public class GarageService {
         garage.setApprovalStatus(GarageApprovalStatus.PENDING);
         garage.setIsVerified(false);
 
-        return garageRepository.save(garage);
+        Garage savedGarage = garageRepository.save(garage);
+
+        if (request.serviceIds() != null && !request.serviceIds().isEmpty()) {
+            serviceCatalogueService.associateServicesWithGarage(savedGarage.getId(), request.serviceIds());
+        }
+
+        return savedGarage;
     }
 
     @Transactional
@@ -215,7 +225,15 @@ public class GarageService {
     }
 
     public Garage getPublicGarageBySlug(String slug) {
-        Garage garage = garageRepository.findBySlug(slug)
+        Optional<Garage> garageOpt = garageRepository.findBySlug(slug);
+        if (garageOpt.isEmpty() && slug != null) {
+            try {
+                Long id = Long.parseLong(slug.trim());
+                garageOpt = garageRepository.findById(id);
+            } catch (NumberFormatException ignored) {}
+        }
+
+        Garage garage = garageOpt
                 .orElseThrow(() -> new ResourceNotFoundException("Garage not found with slug: " + slug));
 
         if (garage.getApprovalStatus() != GarageApprovalStatus.APPROVED) {
@@ -228,16 +246,31 @@ public class GarageService {
         return garageRepository.findByApprovalStatus(GarageApprovalStatus.APPROVED);
     }
 
-    public org.springframework.data.domain.Page<Garage> findPublicApprovedGarages(String city, Boolean isVerified, org.springframework.data.domain.Pageable pageable) {
-        if (city != null && !city.isBlank() && isVerified != null) {
-            return garageRepository.findByApprovalStatusAndCityAndIsVerified(GarageApprovalStatus.APPROVED, city.trim(), isVerified, pageable);
-        } else if (city != null && !city.isBlank()) {
-            return garageRepository.findByApprovalStatusAndCity(GarageApprovalStatus.APPROVED, city.trim(), pageable);
-        } else if (isVerified != null) {
-            return garageRepository.findByApprovalStatusAndIsVerified(GarageApprovalStatus.APPROVED, isVerified, pageable);
-        } else {
-            return garageRepository.findByApprovalStatus(GarageApprovalStatus.APPROVED, pageable);
-        }
+    public org.springframework.data.domain.Page<Garage> findPublicApprovedGarages(
+            String city,
+            Boolean isVerified,
+            Integer serviceId,
+            String serviceSlug,
+            org.springframework.data.domain.Pageable pageable
+    ) {
+        String trimmedCity = (city != null && !city.isBlank()) ? city.trim() : null;
+        String trimmedSlug = (serviceSlug != null && !serviceSlug.isBlank()) ? serviceSlug.trim() : null;
+        return garageRepository.findApprovedWithFilters(
+                GarageApprovalStatus.APPROVED,
+                trimmedCity,
+                isVerified,
+                serviceId,
+                trimmedSlug,
+                pageable
+        );
+    }
+
+    public org.springframework.data.domain.Page<Garage> findPublicApprovedGarages(
+            String city,
+            Boolean isVerified,
+            org.springframework.data.domain.Pageable pageable
+    ) {
+        return findPublicApprovedGarages(city, isVerified, null, null, pageable);
     }
 
     public List<Garage> findPublicApprovedGaragesByCity(String city) {

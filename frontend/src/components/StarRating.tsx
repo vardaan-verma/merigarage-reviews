@@ -41,6 +41,26 @@ export const StarRating: React.FC<StarRatingProps> = ({
     }
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent, starValue: number) => {
+    if (!interactive || !onChange) return;
+
+    if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const next = Math.min(maxStars, starValue + 1);
+      onChange(next);
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      const prev = Math.max(1, starValue - 1);
+      onChange(prev);
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      onChange(1);
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      onChange(maxStars);
+    }
+  };
+
   const uniqueId = React.useId().replace(/:/g, '_');
   const gradientId = `half-grad-${uniqueId}`;
 
@@ -48,7 +68,12 @@ export const StarRating: React.FC<StarRatingProps> = ({
 
   return (
     <div className={`star-rating-container ${sizeClass}`}>
-      <div className="stars-wrapper" onMouseLeave={handleMouseLeave}>
+      <div
+        className="stars-wrapper"
+        onMouseLeave={handleMouseLeave}
+        role={interactive ? 'radiogroup' : undefined}
+        aria-label={interactive ? 'Rating' : undefined}
+      >
         {Array.from({ length: maxStars }, (_, i) => {
           const starValue = i + 1;
           const isFilled = displayRating >= starValue;
@@ -58,11 +83,17 @@ export const StarRating: React.FC<StarRatingProps> = ({
             <button
               key={i}
               type="button"
+              role={interactive ? 'radio' : undefined}
+              aria-checked={interactive ? rating === starValue : undefined}
               className={`star-btn ${interactive ? 'interactive' : 'readonly'}`}
               disabled={!interactive}
               onClick={() => handleClick(starValue)}
               onMouseEnter={() => handleMouseEnter(starValue)}
-              aria-label={`${starValue} star${starValue > 1 ? 's' : ''}`}
+              onFocus={() => handleMouseEnter(starValue)}
+              onBlur={handleMouseLeave}
+              onKeyDown={(e) => handleKeyDown(e, starValue)}
+              aria-label={`${starValue} of ${maxStars} stars`}
+              tabIndex={interactive ? (rating === starValue || (rating === 0 && starValue === 1) ? 0 : -1) : -1}
             >
               <svg
                 viewBox="0 0 24 24"

@@ -12,6 +12,7 @@ import { StarRating } from '../components/StarRating';
 import { Pagination } from '../components/Pagination';
 import { Alert } from '../components/Alert';
 import { Modal } from '../components/Modal';
+import { QuoteRequestModal } from '../components/QuoteRequestModal';
 
 export const GarageDetailPage: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
@@ -29,6 +30,9 @@ export const GarageDetailPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
+  // Quote Request Modal State
+  const [isQuoteModalOpen, setIsQuoteModalOpen] = useState(false);
+
   // Review Modal State
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [editingReviewId, setEditingReviewId] = useState<number | null>(null);
@@ -40,6 +44,13 @@ export const GarageDetailPage: React.FC = () => {
   const [reviewText, setReviewText] = useState('');
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const [reviewError, setReviewError] = useState<string | null>(null);
+  const [ratingErrors, setRatingErrors] = useState<{
+    quality?: string;
+    pricing?: string;
+    timeline?: string;
+    communication?: string;
+    text?: string;
+  }>({});
 
   // Claim Modal State
   const [isClaimModalOpen, setIsClaimModalOpen] = useState(false);
@@ -110,10 +121,10 @@ export const GarageDetailPage: React.FC = () => {
     }
     if (existing) {
       setEditingReviewId(existing.id);
-      setRatingQuality(existing.serviceQuality ?? existing.ratingServiceQuality ?? 0);
-      setRatingPricing(existing.pricing ?? existing.ratingPricing ?? 0);
-      setRatingTimeline(existing.timeline ?? existing.ratingTimeline ?? 0);
-      setRatingCommunication(existing.communication ?? existing.ratingCommunication ?? 0);
+      setRatingQuality(existing.ratingServiceQuality ?? existing.serviceQuality ?? 0);
+      setRatingPricing(existing.ratingPricing ?? existing.pricing ?? 0);
+      setRatingTimeline(existing.ratingTimeline ?? existing.timeline ?? 0);
+      setRatingCommunication(existing.ratingCommunication ?? existing.communication ?? 0);
       setReviewTitle(existing.reviewTitle || '');
       setReviewText(existing.reviewText || '');
     } else {
@@ -126,6 +137,7 @@ export const GarageDetailPage: React.FC = () => {
       setReviewText('');
     }
     setReviewError(null);
+    setRatingErrors({});
     setIsReviewModalOpen(true);
   };
 
@@ -133,57 +145,68 @@ export const GarageDetailPage: React.FC = () => {
     e.preventDefault();
     if (!garage || reviewSubmitting) return;
 
+    const errors: {
+      quality?: string;
+      pricing?: string;
+      timeline?: string;
+      communication?: string;
+      text?: string;
+    } = {};
+
     if (!ratingQuality || ratingQuality < 1 || ratingQuality > 5) {
-      setReviewError('Please provide a rating for Service Quality (1 to 5 stars).');
-      return;
+      errors.quality = 'Please select a rating for Service Quality (1 to 5 stars).';
     }
     if (!ratingPricing || ratingPricing < 1 || ratingPricing > 5) {
-      setReviewError('Please provide a rating for Pricing (1 to 5 stars).');
-      return;
+      errors.pricing = 'Please select a rating for Pricing & Transparency (1 to 5 stars).';
     }
     if (!ratingTimeline || ratingTimeline < 1 || ratingTimeline > 5) {
-      setReviewError('Please provide a rating for Timeline (1 to 5 stars).');
-      return;
+      errors.timeline = 'Please select a rating for Delivery Timeline (1 to 5 stars).';
     }
     if (!ratingCommunication || ratingCommunication < 1 || ratingCommunication > 5) {
-      setReviewError('Please provide a rating for Communication (1 to 5 stars).');
-      return;
+      errors.communication = 'Please select a rating for Communication (1 to 5 stars).';
     }
-    if (!reviewText.trim() || reviewText.trim().length < 10) {
-      setReviewError('Review content must be at least 10 characters.');
+    if (!reviewText.trim()) {
+      errors.text = 'Please enter your detailed experience feedback.';
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setRatingErrors(errors);
+      setReviewError('Please complete all 4 required rating categories and write your review feedback.');
       return;
     }
 
     try {
       setReviewSubmitting(true);
       setReviewError(null);
+      setRatingErrors({});
 
       const payload: CreateReviewRequest = {
-        serviceQuality: ratingQuality,
-        pricing: ratingPricing,
-        timeline: ratingTimeline,
-        communication: ratingCommunication,
         ratingServiceQuality: ratingQuality,
         ratingPricing: ratingPricing,
         ratingTimeline: ratingTimeline,
         ratingCommunication: ratingCommunication,
+        serviceQuality: ratingQuality,
+        pricing: ratingPricing,
+        timeline: ratingTimeline,
+        communication: ratingCommunication,
         reviewTitle: reviewTitle.trim() || undefined,
         reviewText: reviewText.trim(),
       };
 
       if (editingReviewId) {
         await api.reviews.update(editingReviewId, payload);
-        setActionSuccess('Your review was successfully updated.');
+        setActionSuccess('Your review was updated successfully.');
       } else {
         await api.reviews.create(garage.id, payload);
-        setActionSuccess('Thank you! Your review was submitted successfully.');
+        setActionSuccess('Thank you! Your review has been submitted.');
       }
 
       setIsReviewModalOpen(false);
+      setReviewPage(0);
+      fetchReviews(garage.id, 0);
       fetchGarage();
-      fetchReviews(garage.id, reviewPage);
     } catch (err: any) {
-      setReviewError(err.message || 'Failed to submit review');
+      setReviewError(err.message || 'Failed to submit review. You may have already reviewed this workshop.');
     } finally {
       setReviewSubmitting(false);
     }
@@ -202,22 +225,21 @@ export const GarageDetailPage: React.FC = () => {
 
   const handleClaimSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!garage) return;
+    if (!garage || claimSubmitting) return;
 
-    if (!claimMessage.trim() || claimMessage.length < 10) {
-      setClaimError('Please provide a descriptive verification message (min 10 characters).');
+    if (!claimMessage.trim()) {
+      setClaimError('Please provide proof or reason for your ownership claim.');
       return;
     }
 
     try {
       setClaimSubmitting(true);
       setClaimError(null);
-
       await api.claims.submit(garage.id, claimMessage.trim());
-      setActionSuccess('Ownership claim submitted. Our team will audit your credentials shortly.');
       setIsClaimModalOpen(false);
+      setActionSuccess('Your ownership claim has been submitted to administrators for verification.');
     } catch (err: any) {
-      setClaimError(err.message || 'Failed to submit ownership claim');
+      setClaimError(err.message || 'Failed to submit claim.');
     } finally {
       setClaimSubmitting(false);
     }
@@ -225,39 +247,34 @@ export const GarageDetailPage: React.FC = () => {
 
   // Owner Response Submit
   const handleResponseSubmit = async (reviewId: number) => {
-    if (!responseText.trim()) {
-      setResponseError('Response content cannot be blank.');
-      return;
-    }
-
+    if (!responseText.trim() || responseSubmitting) return;
     try {
       setResponseSubmitting(true);
       setResponseError(null);
       await api.reviews.respond(reviewId, responseText.trim());
-      setActionSuccess('Your response has been published to this review.');
       setRespondingReviewId(null);
       setResponseText('');
+      setActionSuccess('Your response to the customer has been posted.');
       if (garage) fetchReviews(garage.id, reviewPage);
     } catch (err: any) {
-      setResponseError(err.message || 'Failed to submit response');
+      setResponseError(err.message || 'Failed to post response.');
     } finally {
       setResponseSubmitting(false);
     }
   };
 
-  // Moderate / Delete Review
+  // Moderator Delete Review
   const handleDeleteReview = async () => {
-    if (!deletingReviewId || !deleteReason.trim()) return;
-
+    if (!deletingReviewId || deleteSubmitting) return;
     try {
       setDeleteSubmitting(true);
-      await api.admin.softDeleteReview(deletingReviewId, deleteReason.trim());
-      setActionSuccess('Review was removed by moderation.');
+      await api.admin.softDeleteReview(deletingReviewId, deleteReason.trim() || 'Moderated by admin');
       setDeletingReviewId(null);
       setDeleteReason('');
+      setActionSuccess('Review moderated and deleted.');
       if (garage) fetchReviews(garage.id, reviewPage);
     } catch (err: any) {
-      alert(`Moderation failed: ${err.message}`);
+      setError(err.message || 'Failed to delete review.');
     } finally {
       setDeleteSubmitting(false);
     }
@@ -265,41 +282,65 @@ export const GarageDetailPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="center-loader py-16">
-        <div className="spinner"></div>
-        <p className="text-muted mt-2">Loading garage details...</p>
+      <div className="container py-16 text-center">
+        <div className="center-loader">
+          <div className="spinner"></div>
+          <p className="text-muted mt-3 text-sm">Loading workshop profile...</p>
+        </div>
       </div>
     );
   }
 
   if (error || !garage) {
     return (
-      <div className="container py-12">
-        <div className="card p-8 text-center max-w-lg mx-auto">
-          <h2 className="text-xl font-bold text-danger mb-2">Garage Not Found</h2>
+      <div className="container py-16 text-center">
+        <div className="card p-12 max-w-lg mx-auto">
+          <span className="material-symbols-outlined text-4xl text-primary mb-3">error</span>
+          <h2 className="text-xl font-bold mb-2">Workshop Not Found</h2>
           <p className="text-secondary text-sm mb-6">
-            {error || 'The requested garage listing could not be found or has not been approved.'}
+            {error || 'The requested workshop profile does not exist.'}
           </p>
           <Link to="/garages" className="btn btn-primary">
-            ← Back to All Garages
+            Return to Garages
           </Link>
         </div>
       </div>
     );
   }
 
-  const isOwner = hasRole('ROLE_GARAGE_OWNER') || hasRole('ROLE_ADMIN');
-  const canModerate = hasRole('ROLE_ADMIN') || hasPermission('CONTENT_MODERATION');
+  const isOwner =
+    user &&
+    (garage.ownerId === user.id ||
+      hasRole('ROLE_GARAGE_OWNER') ||
+      hasRole('ROLE_ADMIN'));
+  const canModerate =
+    hasRole('ROLE_ADMIN') || hasPermission('CONTENT_MODERATION');
 
   const photos = garage.photos || [];
-  const currentPhoto = photos.length > 0 ? photos[activePhotoIdx] : null;
+  const currentPhoto = photos.length > 0 ? photos[activePhotoIdx] || photos[0] : null;
+
+  // Clean phone number for WhatsApp & Tel
+  const cleanPhone = garage.phoneNumber ? garage.phoneNumber.replace(/[^\d]/g, '') : '';
+  const waPhone = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
+
+  // Compute category rating averages from reviews data
+  const overallAvg =
+    reviewsData && reviewsData.content.length > 0
+      ? (
+          reviewsData.content.reduce((acc, r) => acc + (r.overallRating || 0), 0) /
+          reviewsData.content.length
+        ).toFixed(1)
+      : null;
 
   return (
     <div className="container py-8">
-      {/* Breadcrumb */}
-      <nav className="breadcrumb mb-4 text-xs text-muted" aria-label="Breadcrumb">
-        <Link to="/">Home</Link> &gt; <Link to="/garages">Garages</Link> &gt;{' '}
-        <span className="text-primary font-medium">{garage.name}</span>
+      {/* Breadcrumb Navigation */}
+      <nav className="flex items-center gap-2 text-xs text-muted mb-6" aria-label="Breadcrumb">
+        <Link to="/" className="hover:text-primary transition-colors">Home</Link>
+        <span>&gt;</span>
+        <Link to="/garages" className="hover:text-primary transition-colors">Garages</Link>
+        <span>&gt;</span>
+        <span className="text-white font-semibold">{garage.name}</span>
       </nav>
 
       {actionSuccess && (
@@ -311,63 +352,122 @@ export const GarageDetailPage: React.FC = () => {
         />
       )}
 
-      {/* Hero Header */}
-      <div className="garage-detail-header card p-6 mb-8">
-        <div className="flex-between items-start flex-wrap gap-4">
-          <div>
-            <div className="flex items-center gap-3 mb-2">
-              <h1 className="text-2xl font-bold">{garage.name}</h1>
+      {/* Hero Workshop Banner (Stitch autocare_motors_profile_redesign) */}
+      <div className="card p-8 mb-8">
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-6">
+          <div className="space-y-3">
+            <div className="flex items-center gap-3 flex-wrap">
+              <h1 className="text-3xl lg:text-4xl font-extrabold text-white">{garage.name}</h1>
               {garage.isVerified && (
-                <span className="badge badge-verified">✓ Verified Garage</span>
+                <span className="badge badge-verified">
+                  <span className="material-symbols-outlined text-xs">verified</span> Verified Workshop
+                </span>
               )}
             </div>
 
             <div className="flex items-center gap-4 flex-wrap text-sm text-secondary">
+              {overallAvg && (
+                <span className="flex items-center gap-1 font-bold text-white">
+                  <span className="material-symbols-outlined text-primary text-base">star</span>
+                  <span>{overallAvg}</span>
+                  <span className="text-muted font-normal">({reviewsData?.totalElements || 0} reviews)</span>
+                </span>
+              )}
               <span>📍 {garage.addressLine1}, {garage.city}, {garage.state} {garage.postalCode}</span>
-              {garage.phoneNumber && <span>📞 {garage.phoneNumber}</span>}
-              {garage.email && <span>✉️ {garage.email}</span>}
             </div>
+
+            {garage.description && (
+              <p className="text-secondary text-sm max-w-3xl leading-relaxed mt-2">
+                {garage.description}
+              </p>
+            )}
           </div>
 
-          <div className="flex gap-2 flex-wrap items-center">
+          {/* Action Button Strip */}
+          <div className="flex gap-3 flex-wrap items-center mt-3 lg:mt-0">
+            {/* Get a Quote Action */}
             <button
               type="button"
-              className="btn btn-primary btn-sm"
-              onClick={() => handleOpenReviewModal()}
+              className="btn btn-primary inline-flex items-center gap-2 shadow-sm hover:shadow-md cursor-pointer"
+              onClick={() => setIsQuoteModalOpen(true)}
+              id="get-a-quote-btn"
             >
-              ✍️ Write a Review
+              <span className="material-symbols-outlined text-base">request_quote</span>
+              Get a Quote
+            </button>
+
+            {garage.phoneNumber && (
+              <a
+                href={`tel:${garage.phoneNumber}`}
+                className="btn btn-secondary inline-flex items-center gap-2"
+                id="call-workshop-btn"
+              >
+                <span className="material-symbols-outlined text-base">call</span>
+                Call Workshop
+              </a>
+            )}
+
+            {cleanPhone && (
+              <a
+                href={`https://wa.me/${waPhone}`}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="btn btn-secondary inline-flex items-center gap-2 text-emerald-400 hover:text-emerald-300"
+                id="whatsapp-inquiry-btn"
+              >
+                <span className="material-symbols-outlined text-base">chat</span>
+                WhatsApp
+              </a>
+            )}
+
+            <button
+              type="button"
+              className="btn btn-secondary inline-flex items-center gap-2 cursor-pointer"
+              onClick={() => handleOpenReviewModal()}
+              id="write-review-btn"
+            >
+              <span className="material-symbols-outlined text-base">rate_review</span>
+              Write Review
             </button>
 
             {!garage.hasOwner ? (
               <button
                 type="button"
-                className="btn btn-secondary btn-sm"
+                className="btn btn-outline inline-flex items-center gap-2 cursor-pointer"
                 onClick={handleOpenClaimModal}
                 title="Are you the owner of this workshop? Claim ownership."
+                id="claim-listing-btn"
               >
                 Claim Listing
               </button>
             ) : (
-              <span className="badge badge-success text-xs" title="This workshop has a verified owner">
-                ✓ Claimed
+              <span className="badge badge-success inline-flex items-center gap-1 text-xs py-2 px-3 font-semibold" title="This workshop has an audited owner">
+                ✓ Claimed Listing
               </span>
             )}
 
-            {((user && garage.ownerId && user.id === garage.ownerId) || (isOwner && (!garage.hasOwner || user?.id === garage.ownerId))) && (
-              <Link to={`/owner?slug=${garage.slug}`} className="btn btn-outline btn-sm">
-                ⚙️ Manage Workshop
+            {((user && garage.ownerId && user.id === garage.ownerId) ||
+              (isOwner && (!garage.hasOwner || user?.id === garage.ownerId))) && (
+              <Link to={`/owner?slug=${garage.slug}`} className="btn btn-outline inline-flex items-center gap-2">
+                <span className="material-symbols-outlined text-base">settings</span>
+                Manage Hub
               </Link>
             )}
           </div>
         </div>
       </div>
 
+      {/* Main Grid: Gallery, Catalogue, Reviews (Left 2 cols) vs Sidebar (Right 1 col) */}
       <div className="grid grid-3 gap-8">
-        {/* Main Content (2 cols) */}
-        <div className="col-span-2">
+        {/* Left Column: Media Gallery, Services, Reviews */}
+        <div className="col-span-2 space-y-8">
           {/* Photo Gallery */}
-          <div className="card p-4 mb-8">
-            <h3 className="section-title text-base mb-3">Workshop Photos</h3>
+          <div className="card p-6">
+            <h3 className="text-lg font-bold text-white mb-4 flex items-center justify-between">
+              <span>Workshop Gallery & Facilities</span>
+              <span className="text-xs text-muted font-normal">{photos.length} photos</span>
+            </h3>
+
             {photos.length > 0 ? (
               <div className="gallery-container">
                 <div className="main-photo-wrapper">
@@ -379,12 +479,14 @@ export const GarageDetailPage: React.FC = () => {
                     />
                   )}
                   {currentPhoto?.isCover && (
-                    <span className="badge badge-accent cover-badge">Cover Photo</span>
+                    <span className="badge badge-verified cover-badge">
+                      <span className="material-symbols-outlined text-xs">star</span> Cover Photo
+                    </span>
                   )}
                 </div>
 
                 {photos.length > 1 && (
-                  <div className="thumbnail-strip mt-3 flex gap-2 overflow-x-auto">
+                  <div className="thumbnail-strip">
                     {photos.map((p, idx) => (
                       <button
                         key={p.id}
@@ -404,18 +506,34 @@ export const GarageDetailPage: React.FC = () => {
               </div>
             ) : (
               <div className="empty-state p-8 text-center text-muted">
-                No approved photos uploaded for this garage yet.
+                <span className="material-symbols-outlined text-4xl text-slate-500 mb-2">add_a_photo</span>
+                <p>No photos uploaded for this workshop yet.</p>
               </div>
             )}
           </div>
 
-          {/* Active Services Catalogue */}
-          <div className="card p-6 mb-8">
-            <div className="flex-between items-center mb-4">
-              <h3 className="section-title text-base">Offered Services & Pricing</h3>
-              <span className="text-xs text-muted">
-                {garage.services?.length || 0} services available
-              </span>
+          {/* Active Services Catalogue & Pricing */}
+          <div className="card p-6">
+            <div className="flex-between items-center mb-4 flex-wrap gap-2">
+              <div>
+                <h3 className="text-lg font-bold text-white">Services & Starting Estimates</h3>
+                <p className="text-xs text-secondary mt-0.5">
+                  Itemized pricing and service availability verified with this workshop.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="badge badge-secondary text-xs">
+                  {garage.services?.length || 0} Listed Services
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-xs inline-flex items-center gap-1 cursor-pointer"
+                  onClick={() => setIsQuoteModalOpen(true)}
+                >
+                  <span className="material-symbols-outlined text-xs">request_quote</span>
+                  Get a Quote
+                </button>
+              </div>
             </div>
 
             {garage.services && garage.services.length > 0 ? (
@@ -423,22 +541,30 @@ export const GarageDetailPage: React.FC = () => {
                 <table className="table">
                   <thead>
                     <tr>
-                      <th>Service</th>
+                      <th>Service Name</th>
                       <th>Category</th>
                       <th>Starting Price</th>
-                      <th>Status</th>
+                      <th>Availability</th>
                     </tr>
                   </thead>
                   <tbody>
                     {garage.services.map((gs) => (
                       <tr key={gs.serviceId}>
-                        <td className="font-medium text-foreground">{gs.serviceName}</td>
-                        <td className="text-muted text-xs">{gs.category.replace('_', ' ')}</td>
-                        <td className="font-mono text-accent">
-                          {gs.startingPrice ? `₹${gs.startingPrice.toLocaleString('en-IN')}` : 'Contact for quote'}
+                        <td className="font-bold text-white">{gs.serviceName}</td>
+                        <td className="text-muted text-xs">
+                          {gs.category?.replace(/_/g, ' ') || 'Service'}
+                        </td>
+                        <td className="font-mono text-primary font-bold">
+                          {gs.startingPrice
+                            ? `₹${gs.startingPrice.toLocaleString('en-IN')}`
+                            : 'Quote on Spec'}
                         </td>
                         <td>
-                          <span className={`badge ${gs.isAvailable ? 'badge-success' : 'badge-danger'}`}>
+                          <span
+                            className={`badge ${
+                              gs.isAvailable ? 'badge-success' : 'badge-danger'
+                            }`}
+                          >
                             {gs.isAvailable ? 'Available' : 'Unavailable'}
                           </span>
                         </td>
@@ -448,17 +574,19 @@ export const GarageDetailPage: React.FC = () => {
                 </table>
               </div>
             ) : (
-              <p className="text-sm text-muted">No specific services registered yet.</p>
+              <p className="text-sm text-secondary">
+                No specific services registered yet. Contact the workshop directly for a custom inspection quote.
+              </p>
             )}
           </div>
 
-          {/* Reviews & Ratings Section */}
-          <div className="card p-6 mb-8" id="reviews-section">
+          {/* Customer Reviews & Detailed Ratings Section */}
+          <div className="card p-6" id="reviews-section">
             <div className="flex-between items-center mb-6">
               <div>
-                <h3 className="section-title text-base">Customer Reviews</h3>
-                <p className="text-xs text-muted">
-                  Verified feedback from registered vehicle owners
+                <h3 className="text-lg font-bold text-white">Motorist Reviews</h3>
+                <p className="text-xs text-secondary mt-0.5">
+                  Audited customer ratings from verified vehicle owners
                 </p>
               </div>
               <button
@@ -466,27 +594,34 @@ export const GarageDetailPage: React.FC = () => {
                 className="btn btn-primary btn-sm"
                 onClick={() => handleOpenReviewModal()}
               >
-                + Add Review
+                + Write a Review
               </button>
             </div>
 
-            {reviewsError && (
-              <Alert type="error" message={reviewsError} className="mb-4" />
-            )}
+            {reviewsError && <Alert type="error" message={reviewsError} className="mb-4" />}
 
             {reviewsLoading && !reviewsData && (
-              <div className="p-4 text-center text-muted text-sm">Loading reviews...</div>
+              <div className="center-loader py-8">
+                <div className="spinner"></div>
+                <p className="text-muted mt-2 text-sm">Loading reviews...</p>
+              </div>
             )}
 
             {reviewsData && reviewsData.content.length > 0 ? (
-              <div className="reviews-list space-y-6">
-                {reviewsData.content.map((rev) => {
-                  return (
-                    <article key={rev.id} className="review-item card p-4 bg-surface-raised">
-                      <div className="flex-between items-start mb-2">
+              <div className="space-y-6">
+                {reviewsData.content.map((rev) => (
+                  <article
+                    key={rev.id}
+                    className="card p-5 bg-surface-raised border border-border"
+                  >
+                    <div className="flex-between items-start mb-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-primary font-bold text-sm">
+                          {(rev.authorFullName || 'U').charAt(0).toUpperCase()}
+                        </div>
                         <div>
                           <div className="flex items-center gap-2">
-                            <span className="font-semibold text-sm">{rev.authorFullName}</span>
+                            <span className="font-bold text-sm text-white">{rev.authorFullName}</span>
                             <StarRating rating={rev.overallRating} size="sm" showNumber={true} />
                           </div>
                           <span className="text-xs text-muted">
@@ -500,9 +635,12 @@ export const GarageDetailPage: React.FC = () => {
                             )}
                           </span>
                         </div>
+                      </div>
 
-                        <div className="flex gap-2">
-                          {user && (user.id === rev.authorUserId || user.fullName === rev.authorFullName) && (
+                      <div className="flex gap-2">
+                        {user &&
+                          (user.id === rev.authorUserId ||
+                            user.fullName === rev.authorFullName) && (
                             <button
                               type="button"
                               className="btn btn-secondary btn-xs"
@@ -511,96 +649,110 @@ export const GarageDetailPage: React.FC = () => {
                               ✏️ Edit
                             </button>
                           )}
-                          {canModerate && (
-                            <button
-                              type="button"
-                              className="btn btn-danger btn-xs"
-                              onClick={() => {
-                                setDeletingReviewId(rev.id);
-                                setDeleteReason('');
-                              }}
-                            >
-                              Moderate
-                            </button>
-                          )}
-                        </div>
+                        {canModerate && (
+                          <button
+                            type="button"
+                            className="btn btn-danger btn-xs"
+                            onClick={() => {
+                              setDeletingReviewId(rev.id);
+                              setDeleteReason('');
+                            }}
+                          >
+                            Moderate
+                          </button>
+                        )}
                       </div>
+                    </div>
 
-                      {/* Four category ratings */}
-                      <div className="grid grid-4 gap-2 text-xs text-muted bg-surface p-2 rounded mb-3">
-                        <div>Service Quality: <strong>{rev.ratingServiceQuality ?? rev.serviceQuality ?? '—'}/5</strong></div>
-                        <div>Pricing: <strong>{rev.ratingPricing ?? rev.pricing ?? '—'}/5</strong></div>
-                        <div>Timeline: <strong>{rev.ratingTimeline ?? rev.timeline ?? '—'}/5</strong></div>
-                        <div>Communication: <strong>{rev.ratingCommunication ?? rev.communication ?? '—'}/5</strong></div>
+                    {/* 4 Multi-criteria Ratings Pill Grid */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-secondary bg-elevated p-3 rounded-xl mb-3 border border-border">
+                      <div>
+                        Quality: <strong className="text-white">{rev.ratingServiceQuality ?? rev.serviceQuality ?? '—'}/5</strong>
                       </div>
+                      <div>
+                        Pricing: <strong className="text-white">{rev.ratingPricing ?? rev.pricing ?? '—'}/5</strong>
+                      </div>
+                      <div>
+                        Timeline: <strong className="text-white">{rev.ratingTimeline ?? rev.timeline ?? '—'}/5</strong>
+                      </div>
+                      <div>
+                        Communication: <strong className="text-white">{rev.ratingCommunication ?? rev.communication ?? '—'}/5</strong>
+                      </div>
+                    </div>
 
-                      {rev.reviewTitle && <h4 className="font-bold text-sm mb-1">{rev.reviewTitle}</h4>}
-                      <p className="text-sm text-secondary mb-3">{rev.reviewText}</p>
+                    {rev.reviewTitle && (
+                      <h4 className="font-bold text-sm text-white mb-1.5">{rev.reviewTitle}</h4>
+                    )}
+                    <p className="text-sm text-secondary leading-relaxed mb-3">{rev.reviewText}</p>
 
-                      {/* Owner response display */}
-                      {rev.response ? (
-                        <div className="owner-response-box p-3 mt-3 border-l-2 border-primary bg-surface rounded">
-                          <div className="flex-between items-center mb-1">
-                            <span className="font-semibold text-xs text-primary">
-                              🛠️ Garage Owner Response
-                            </span>
-                            <span className="text-xs text-muted">
-                              {new Date(rev.response.createdAt).toLocaleDateString('en-IN')}
-                            </span>
-                          </div>
-                          <p className="text-xs text-secondary">{rev.response.responseText}</p>
+                    {/* Owner Public Response */}
+                    {rev.response ? (
+                      <div className="p-3.5 mt-3 border-l-2 border-primary bg-card rounded-r-xl">
+                        <div className="flex-between items-center mb-1">
+                          <span className="font-bold text-xs text-primary flex items-center gap-1">
+                            <span className="material-symbols-outlined text-xs">storefront</span>
+                            Workshop Owner Response
+                          </span>
+                          <span className="text-xs text-muted">
+                            {new Date(rev.response.createdAt).toLocaleDateString('en-IN')}
+                          </span>
                         </div>
-                      ) : isOwner ? (
-                        <div className="mt-3">
-                          {respondingReviewId === rev.id ? (
-                            <div className="response-form-box p-3 bg-surface rounded">
-                              <label className="form-label text-xs">Public Response to Customer</label>
-                              <textarea
-                                className="form-control text-xs mb-2"
-                                rows={3}
-                                placeholder="Thank the customer or address their concern constructively..."
-                                value={responseText}
-                                onChange={(e) => setResponseText(e.target.value)}
-                              />
-                              {responseError && (
-                                <p className="text-danger text-xs mb-2">{responseError}</p>
-                              )}
-                              <div className="flex gap-2">
-                                <button
-                                  type="button"
-                                  className="btn btn-primary btn-xs"
-                                  disabled={responseSubmitting}
-                                  onClick={() => handleResponseSubmit(rev.id)}
-                                >
-                                  {responseSubmitting ? 'Submitting...' : 'Post Response'}
-                                </button>
-                                <button
-                                  type="button"
-                                  className="btn btn-secondary btn-xs"
-                                  onClick={() => setRespondingReviewId(null)}
-                                >
-                                  Cancel
-                                </button>
-                              </div>
+                        <p className="text-xs text-secondary leading-relaxed">
+                          {rev.response.responseText}
+                        </p>
+                      </div>
+                    ) : isOwner ? (
+                      <div className="mt-3">
+                        {respondingReviewId === rev.id ? (
+                          <div className="p-3 bg-card rounded-xl border border-border">
+                            <label className="form-label text-xs">
+                              Public Response to Motorist
+                            </label>
+                            <textarea
+                              className="form-control text-xs mb-2"
+                              rows={3}
+                              placeholder="Thank the customer or address their concern constructively..."
+                              value={responseText}
+                              onChange={(e) => setResponseText(e.target.value)}
+                            />
+                            {responseError && (
+                              <p className="text-danger text-xs mb-2">{responseError}</p>
+                            )}
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                className="btn btn-primary btn-xs"
+                                disabled={responseSubmitting}
+                                onClick={() => handleResponseSubmit(rev.id)}
+                              >
+                                {responseSubmitting ? 'Posting...' : 'Post Response'}
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-xs"
+                                onClick={() => setRespondingReviewId(null)}
+                              >
+                                Cancel
+                              </button>
                             </div>
-                          ) : (
-                            <button
-                              type="button"
-                              className="btn btn-outline btn-xs"
-                              onClick={() => {
-                                setRespondingReviewId(rev.id);
-                                setResponseText('');
-                                setResponseError(null);
-                              }}
-                            >
-                              💬 Respond to this review
-                            </button>
-                          )}
-                        </div>
-                      ) : null}
-                    </article>
-                  );
-                })}
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            className="btn btn-outline btn-xs"
+                            onClick={() => {
+                              setRespondingReviewId(rev.id);
+                              setResponseText('');
+                              setResponseError(null);
+                            }}
+                          >
+                            💬 Respond to this review
+                          </button>
+                        )}
+                      </div>
+                    ) : null}
+                  </article>
+                ))}
 
                 <Pagination
                   page={reviewsData.page}
@@ -611,22 +763,25 @@ export const GarageDetailPage: React.FC = () => {
               </div>
             ) : (
               <div className="empty-state p-8 text-center text-muted">
-                No reviews yet. Be the first customer to share your experience!
+                <span className="material-symbols-outlined text-4xl text-slate-500 mb-2">rate_review</span>
+                <p className="text-sm">No reviews yet. Be the first customer to share your experience!</p>
               </div>
             )}
           </div>
         </div>
 
-        {/* Sidebar Info (1 col) */}
-        <div>
-          {/* Contact & Address Card */}
-          <div className="card p-6 mb-6">
-            <h3 className="section-title text-base mb-4">Workshop Information</h3>
+        {/* Right Sidebar: Contact, Live Map, Trust Standard */}
+        <div className="space-y-6">
+          {/* Workshop Contact Details Card */}
+          <div className="card p-6">
+            <h3 className="text-base font-bold text-white mb-4 pb-2 border-b border-border">
+              Workshop Contact & Info
+            </h3>
 
-            <div className="space-y-3 text-sm">
+            <div className="space-y-3.5 text-sm">
               <div>
-                <span className="text-muted block text-xs">Address</span>
-                <span className="font-medium text-foreground">
+                <span className="text-muted block text-xs mb-0.5">Physical Address</span>
+                <span className="font-semibold text-white">
                   {garage.addressLine1}
                   {garage.addressLine2 && `, ${garage.addressLine2}`}
                   <br />
@@ -636,42 +791,77 @@ export const GarageDetailPage: React.FC = () => {
 
               {garage.phoneNumber && (
                 <div>
-                  <span className="text-muted block text-xs">Direct Phone</span>
-                  <a href={`tel:${garage.phoneNumber}`} className="text-primary font-mono">
-                    {garage.phoneNumber}
+                  <span className="text-muted block text-xs mb-0.5">Phone Number</span>
+                  <a href={`tel:${garage.phoneNumber}`} className="text-primary font-mono font-bold">
+                    📞 {garage.phoneNumber}
+                  </a>
+                </div>
+              )}
+
+              {cleanPhone && (
+                <div>
+                  <span className="text-muted block text-xs mb-0.5">WhatsApp Inquiry</span>
+                  <a
+                    href={`https://wa.me/${waPhone}`}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="text-emerald-400 font-mono font-bold text-xs hover:underline flex items-center gap-1"
+                  >
+                    <span className="material-symbols-outlined text-sm">chat</span>
+                    Direct Message
                   </a>
                 </div>
               )}
 
               {garage.email && (
                 <div>
-                  <span className="text-muted block text-xs">Business Email</span>
+                  <span className="text-muted block text-xs mb-0.5">Business Email</span>
                   <a href={`mailto:${garage.email}`} className="text-primary font-mono text-xs">
-                    {garage.email}
+                    ✉️ {garage.email}
                   </a>
                 </div>
               )}
 
               {garage.websiteUrl && (
                 <div>
-                  <span className="text-muted block text-xs">Website</span>
+                  <span className="text-muted block text-xs mb-0.5">Official Website</span>
                   <a
-                    href={garage.websiteUrl.startsWith('http') ? garage.websiteUrl : `https://${garage.websiteUrl}`}
+                    href={
+                      garage.websiteUrl.startsWith('http')
+                        ? garage.websiteUrl
+                        : `https://${garage.websiteUrl}`
+                    }
                     target="_blank"
                     rel="noreferrer noopener"
                     className="text-primary text-xs underline"
                   >
-                    Visit Website ↗
+                    {garage.websiteUrl} ↗
                   </a>
                 </div>
               )}
+
+              {/* Sidebar Quick Quote Action */}
+              <div className="pt-3 border-t border-border mt-3">
+                <button
+                  type="button"
+                  className="btn btn-primary w-full inline-flex items-center justify-center gap-2 text-xs py-2.5 cursor-pointer shadow-sm hover:shadow-md"
+                  onClick={() => setIsQuoteModalOpen(true)}
+                  id="sidebar-get-quote-btn"
+                >
+                  <span className="material-symbols-outlined text-sm">request_quote</span>
+                  Request an Online Quote
+                </button>
+              </div>
             </div>
           </div>
 
-          {/* Location & Map Card */}
-          <div className="card p-6 mb-6">
-            <h3 className="section-title text-base mb-3">Location & Directions</h3>
-            <div className="location-map-wrapper mb-3 rounded overflow-hidden border border-border" style={{ height: '220px', background: 'var(--bg-surface)' }}>
+          {/* Location & Directions Card */}
+          <div className="card p-6">
+            <h3 className="text-base font-bold text-white mb-3">Location & Directions</h3>
+            <div
+              className="location-map-wrapper mb-3 rounded-xl overflow-hidden border border-border"
+              style={{ height: '220px', background: 'var(--bg-elevated)' }}
+            >
               <iframe
                 title={`Map for ${garage.name}`}
                 width="100%"
@@ -699,7 +889,9 @@ export const GarageDetailPage: React.FC = () => {
                   garage.googleMapsUrl ||
                   (garage.latitude && garage.longitude
                     ? `https://www.google.com/maps/search/?api=1&query=${garage.latitude},${garage.longitude}`
-                    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${garage.name} ${garage.city}`)}`)
+                    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                        `${garage.name} ${garage.city}`
+                      )}`)
                 }
                 target="_blank"
                 rel="noreferrer noopener"
@@ -710,13 +902,16 @@ export const GarageDetailPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Verification Status Card */}
+          {/* Trust Guarantee Standard */}
           <div className="card p-6 bg-surface-raised">
-            <h4 className="font-bold text-sm mb-2">MeriGarage Trust Standard</h4>
+            <div className="flex items-center gap-2 mb-2 text-white font-bold text-sm">
+              <span className="material-symbols-outlined text-primary text-lg">verified_user</span>
+              MeriGarage Verified Shield
+            </div>
             <p className="text-xs text-secondary leading-relaxed">
               {garage.isVerified
-                ? 'This workshop has been officially verified by MeriGarage. Business registration and trade documents have been inspected.'
-                : 'This listing is community-submitted. Verification documents are pending submission by the garage owner.'}
+                ? 'This workshop has been officially verified by MeriGarage. Business registration and trade documents have been audited.'
+                : 'This listing is community-submitted. Official trade verification documents are pending submission by the garage owner.'}
             </p>
           </div>
         </div>
@@ -728,148 +923,173 @@ export const GarageDetailPage: React.FC = () => {
         onClose={() => setIsReviewModalOpen(false)}
         title={editingReviewId ? 'Edit Your Review' : `Review ${garage.name}`}
       >
-        <form onSubmit={handleReviewSubmit}>
-          {reviewError && <Alert type="error" message={reviewError} className="mb-4" />}
+        <form onSubmit={handleReviewSubmit} className="space-y-4">
+          {reviewError && <Alert type="error" message={reviewError} className="mb-3" />}
 
-          <div className="grid grid-2 gap-4 mb-4">
-            <div className="form-group mb-0">
+          <p className="text-xs text-secondary">
+            Rate your experience across all 4 automotive care pillars:
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-elevated p-4 rounded-xl border border-border">
+            <div>
               <div className="flex-between items-center mb-1">
                 <label className="form-label text-xs mb-0">Service Quality *</label>
-                <span className="text-xs font-semibold text-accent">
-                  {ratingQuality > 0 ? `${ratingQuality} / 5 stars` : 'Not rated'}
-                </span>
+                <span className="text-[11px] text-muted">{ratingQuality > 0 ? `${ratingQuality}/5` : 'Required'}</span>
               </div>
               <StarRating
                 rating={ratingQuality}
-                interactive={!reviewSubmitting}
-                onChange={setRatingQuality}
+                interactive={true}
+                onChange={(v) => {
+                  setRatingQuality(v);
+                  setRatingErrors((prev) => ({ ...prev, quality: undefined }));
+                }}
                 size="md"
               />
+              {ratingErrors.quality && (
+                <p className="text-danger text-xs mt-1">{ratingErrors.quality}</p>
+              )}
             </div>
 
-            <div className="form-group mb-0">
+            <div>
               <div className="flex-between items-center mb-1">
-                <label className="form-label text-xs mb-0">Pricing *</label>
-                <span className="text-xs font-semibold text-accent">
-                  {ratingPricing > 0 ? `${ratingPricing} / 5 stars` : 'Not rated'}
-                </span>
+                <label className="form-label text-xs mb-0">Pricing & Transparency *</label>
+                <span className="text-[11px] text-muted">{ratingPricing > 0 ? `${ratingPricing}/5` : 'Required'}</span>
               </div>
               <StarRating
                 rating={ratingPricing}
-                interactive={!reviewSubmitting}
-                onChange={setRatingPricing}
+                interactive={true}
+                onChange={(v) => {
+                  setRatingPricing(v);
+                  setRatingErrors((prev) => ({ ...prev, pricing: undefined }));
+                }}
                 size="md"
               />
+              {ratingErrors.pricing && (
+                <p className="text-danger text-xs mt-1">{ratingErrors.pricing}</p>
+              )}
             </div>
 
-            <div className="form-group mb-0">
+            <div>
               <div className="flex-between items-center mb-1">
-                <label className="form-label text-xs mb-0">Timeline *</label>
-                <span className="text-xs font-semibold text-accent">
-                  {ratingTimeline > 0 ? `${ratingTimeline} / 5 stars` : 'Not rated'}
-                </span>
+                <label className="form-label text-xs mb-0">Delivery Timeline *</label>
+                <span className="text-[11px] text-muted">{ratingTimeline > 0 ? `${ratingTimeline}/5` : 'Required'}</span>
               </div>
               <StarRating
                 rating={ratingTimeline}
-                interactive={!reviewSubmitting}
-                onChange={setRatingTimeline}
+                interactive={true}
+                onChange={(v) => {
+                  setRatingTimeline(v);
+                  setRatingErrors((prev) => ({ ...prev, timeline: undefined }));
+                }}
                 size="md"
               />
+              {ratingErrors.timeline && (
+                <p className="text-danger text-xs mt-1">{ratingErrors.timeline}</p>
+              )}
             </div>
 
-            <div className="form-group mb-0">
+            <div>
               <div className="flex-between items-center mb-1">
                 <label className="form-label text-xs mb-0">Communication *</label>
-                <span className="text-xs font-semibold text-accent">
-                  {ratingCommunication > 0 ? `${ratingCommunication} / 5 stars` : 'Not rated'}
-                </span>
+                <span className="text-[11px] text-muted">{ratingCommunication > 0 ? `${ratingCommunication}/5` : 'Required'}</span>
               </div>
               <StarRating
                 rating={ratingCommunication}
-                interactive={!reviewSubmitting}
-                onChange={setRatingCommunication}
+                interactive={true}
+                onChange={(v) => {
+                  setRatingCommunication(v);
+                  setRatingErrors((prev) => ({ ...prev, communication: undefined }));
+                }}
                 size="md"
               />
+              {ratingErrors.communication && (
+                <p className="text-danger text-xs mt-1">{ratingErrors.communication}</p>
+              )}
             </div>
           </div>
 
-          <div className="form-group mb-3">
+          <div className="form-group">
             <label className="form-label" htmlFor="rev-title">
-              Review Title
+              Review Headline (Optional)
             </label>
             <input
               id="rev-title"
               type="text"
+              placeholder="e.g. Excellent AC repair and fair billing"
               className="form-control"
-              placeholder="e.g. Excellent service and honest pricing"
               value={reviewTitle}
               onChange={(e) => setReviewTitle(e.target.value)}
-              disabled={reviewSubmitting}
             />
           </div>
 
-          <div className="form-group mb-6">
+          <div className="form-group">
             <label className="form-label" htmlFor="rev-text">
-              Your Review & Experience *
+              Detailed Experience *
             </label>
             <textarea
               id="rev-text"
               rows={4}
               required
+              placeholder="Describe the diagnosis, parts replaced, cleanliness of workshop, and overall professionalism..."
               className="form-control"
-              placeholder="Describe your service experience, mechanic communication, turnaround time, etc. (min 10 characters)"
               value={reviewText}
-              onChange={(e) => setReviewText(e.target.value)}
-              disabled={reviewSubmitting}
+              onChange={(e) => {
+                setReviewText(e.target.value);
+                setRatingErrors((prev) => ({ ...prev, text: undefined }));
+              }}
             />
+            {ratingErrors.text && (
+              <p className="text-danger text-xs mt-1">{ratingErrors.text}</p>
+            )}
           </div>
 
-          <div className="modal-actions flex-between">
+          <div className="modal-actions">
             <button
               type="button"
               className="btn btn-secondary"
               onClick={() => setIsReviewModalOpen(false)}
-              disabled={reviewSubmitting}
             >
               Cancel
             </button>
-            <button type="submit" className="btn btn-primary" disabled={reviewSubmitting}>
-              {reviewSubmitting ? 'Submitting...' : editingReviewId ? 'Update Review' : 'Post Review'}
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={reviewSubmitting}
+            >
+              {reviewSubmitting ? 'Submitting...' : 'Submit Review'}
             </button>
           </div>
         </form>
       </Modal>
 
-      {/* Claim Modal */}
+      {/* Claim Workshop Modal */}
       <Modal
         isOpen={isClaimModalOpen}
         onClose={() => setIsClaimModalOpen(false)}
         title={`Claim Ownership: ${garage.name}`}
       >
-        <form onSubmit={handleClaimSubmit}>
-          {claimError && <Alert type="error" message={claimError} className="mb-4" />}
-
-          <p className="text-xs text-muted mb-4">
-            If you own or manage this auto repair garage, submit your verification message below.
-            Include trade license or contact credentials. Our administrative team will audit your claim.
+        <form onSubmit={handleClaimSubmit} className="space-y-4">
+          {claimError && <Alert type="error" message={claimError} className="mb-3" />}
+          <p className="text-xs text-secondary leading-relaxed">
+            Please provide your business role, official workshop contact details, and any trade registration references to expedite verification by administrators.
           </p>
 
-          <div className="form-group mb-6">
+          <div className="form-group">
             <label className="form-label" htmlFor="claim-msg">
-              Claim Message & Credentials *
+              Claim Message & Proof of Ownership *
             </label>
             <textarea
               id="claim-msg"
-              rows={4}
+              rows={5}
               required
+              placeholder="I am the managing director/owner of this workshop. Trade license number: ... Please link this profile to my account."
               className="form-control"
-              placeholder="Explain your affiliation with this workshop, trade license number, business contact number, etc. (min 10 characters)"
               value={claimMessage}
               onChange={(e) => setClaimMessage(e.target.value)}
             />
           </div>
 
-          <div className="modal-actions flex-between">
+          <div className="modal-actions">
             <button
               type="button"
               className="btn btn-secondary"
@@ -877,35 +1097,42 @@ export const GarageDetailPage: React.FC = () => {
             >
               Cancel
             </button>
-            <button type="submit" className="btn btn-primary" disabled={claimSubmitting}>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={claimSubmitting}
+            >
               {claimSubmitting ? 'Submitting Claim...' : 'Submit Claim'}
             </button>
           </div>
         </form>
       </Modal>
 
-      {/* Moderation Reason Modal */}
+      {/* Moderator Delete Review Confirmation Modal */}
       <Modal
         isOpen={deletingReviewId !== null}
         onClose={() => setDeletingReviewId(null)}
-        title="Moderate & Remove Review"
+        title="Moderate & Delete Review"
       >
         <div className="space-y-4">
-          <p className="text-xs text-secondary">
-            Moderating will soft-delete this review from public display. Please enter an audit reason.
+          <p className="text-sm text-secondary">
+            Are you sure you want to delete this review? This action cannot be undone.
           </p>
           <div className="form-group">
-            <label className="form-label">Moderation Reason *</label>
-            <textarea
-              rows={3}
-              required
+            <label className="form-label" htmlFor="delete-reason">
+              Moderation Reason (Optional)
+            </label>
+            <input
+              id="delete-reason"
+              type="text"
+              placeholder="e.g. Inappropriate language, spam, or verified false claim"
               className="form-control"
-              placeholder="e.g. Contains profanity, fraudulent review, duplicate submission"
               value={deleteReason}
               onChange={(e) => setDeleteReason(e.target.value)}
             />
           </div>
-          <div className="modal-actions flex-between">
+
+          <div className="modal-actions">
             <button
               type="button"
               className="btn btn-secondary"
@@ -916,14 +1143,28 @@ export const GarageDetailPage: React.FC = () => {
             <button
               type="button"
               className="btn btn-danger"
-              disabled={deleteSubmitting || !deleteReason.trim()}
+              disabled={deleteSubmitting}
               onClick={handleDeleteReview}
             >
-              {deleteSubmitting ? 'Removing...' : 'Confirm Moderation'}
+              {deleteSubmitting ? 'Deleting...' : 'Delete Review'}
             </button>
           </div>
         </div>
       </Modal>
+
+      {/* Quote Request Modal */}
+      {garage && (
+        <QuoteRequestModal
+          isOpen={isQuoteModalOpen}
+          onClose={() => setIsQuoteModalOpen(false)}
+          garage={garage}
+          onSuccess={() => {
+            setActionSuccess(
+              'Your quote request has been submitted to the workshop! You can track its status and communicate with the owner in My Quotes.'
+            );
+          }}
+        />
+      )}
     </div>
   );
 };

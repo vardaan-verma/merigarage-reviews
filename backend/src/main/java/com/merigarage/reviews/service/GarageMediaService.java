@@ -27,7 +27,7 @@ import java.util.Optional;
 @Transactional(readOnly = true)
 public class GarageMediaService {
 
-    public static final int MAX_PHOTOS_PER_GARAGE = 10;
+    public static final int MAX_PHOTOS_PER_GARAGE = 7;
 
     private final GaragePhotoRepository photoRepository;
     private final GarageDocumentRepository documentRepository;
@@ -56,6 +56,9 @@ public class GarageMediaService {
 
         long activeCount = photoRepository.countByGarageIdAndIsDeletedFalseAndModerationStatusNot(garageId, ModerationStatus.REJECTED);
         if (activeCount >= MAX_PHOTOS_PER_GARAGE) {
+            if (activeCount > MAX_PHOTOS_PER_GARAGE) {
+                throw new ValidationException("This garage already has " + activeCount + " photos, which exceeds the limit of " + MAX_PHOTOS_PER_GARAGE + ". Please delete photos before uploading new ones.");
+            }
             throw new ValidationException("Maximum limit of " + MAX_PHOTOS_PER_GARAGE + " active photos reached for this garage.");
         }
 
@@ -118,7 +121,7 @@ public class GarageMediaService {
     }
 
     @Transactional
-    public void deletePhoto(Long photoId, User authenticatedUser) {
+    public void deletePhoto(Long garageId, Long photoId, User authenticatedUser) {
         if (authenticatedUser == null) {
             throw new ForbiddenOperationException("Authenticated user required to delete photo.");
         }
@@ -126,12 +129,33 @@ public class GarageMediaService {
         GaragePhoto photo = photoRepository.findById(photoId)
                 .orElseThrow(() -> new ResourceNotFoundException("Photo not found with id: " + photoId));
 
+        if (!photo.getGarage().getId().equals(garageId)) {
+            throw new InvalidOperationException("Photo does not belong to the specified garage.");
+        }
+
+        boolean wasCover = Boolean.TRUE.equals(photo.getIsCover());
         photo.setIsDeleted(true);
         photo.setDeletedAt(LocalDateTime.now());
-        if (photo.getIsCover()) {
+        if (wasCover) {
             photo.setIsCover(false);
         }
-        photoRepository.save(photo);
+        photoRepository.saveAndFlush(photo);
+
+        if (wasCover) {
+            List<GaragePhoto> active = photoRepository.findByGarageIdAndIsDeletedFalseOrderByDisplayOrderAsc(garageId);
+            if (!active.isEmpty()) {
+                GaragePhoto nextCover = active.get(0);
+                nextCover.setIsCover(true);
+                photoRepository.save(nextCover);
+            }
+        }
+    }
+
+    @Transactional
+    public void deletePhoto(Long photoId, User authenticatedUser) {
+        GaragePhoto photo = photoRepository.findById(photoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Photo not found with id: " + photoId));
+        deletePhoto(photo.getGarage().getId(), photoId, authenticatedUser);
     }
 
     public List<GaragePhoto> getActivePhotosForGarage(Long garageId) {
@@ -197,5 +221,15 @@ public class GarageMediaService {
         return documentRepository.findByGarageId(garageId).stream()
                 .map(GarageDocumentDto::fromEntity)
                 .toList();
+    }
+
+    public java.util.Map<Long, Long> getCoverPhotoIdsForGarages(List<Long> garageIds) {
+        if (garageIds == null || garageIds.isEmpty()) return java.util.Map.of();
+        List<GaragePhoto> covers = photoRepository.findCoverPhotosByGarageIds(garageIds);
+        java.util.Map<Long, Long> map = new java.util.HashMap<>();
+        for (GaragePhoto p : covers) {
+            map.put(p.getGarage().getId(), p.getId());
+        }
+        return map;
     }
 }

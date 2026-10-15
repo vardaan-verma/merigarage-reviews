@@ -7,18 +7,17 @@ interface GarageCardProps {
   garage: GarageSummaryDto;
   isSelected?: boolean;
   onSelect?: () => void;
+  distanceKm?: number | null;
 }
 
-export const GarageCard: React.FC<GarageCardProps> = ({ garage, isSelected, onSelect }) => {
+export const GarageCard: React.FC<GarageCardProps> = ({ garage, isSelected, onSelect, distanceKm }) => {
   const photoUrl = garage.coverPhotoId
     ? api.garages.getPhotoUrl(garage.id, garage.coverPhotoId)
     : null;
 
   return (
     <article
-      className={`garage-card card animate-fade-in cursor-pointer transition ${
-        isSelected ? 'border-primary ring-2 ring-primary ring-offset-2 ring-offset-bg-main shadow-lg' : ''
-      }`}
+      className={`garage-card ${isSelected ? 'is-selected' : ''}`}
       id={`garage-${garage.id}`}
       onClick={onSelect}
     >
@@ -39,59 +38,90 @@ export const GarageCard: React.FC<GarageCardProps> = ({ garage, isSelected, onSe
             }}
           />
         ) : null}
+
         <div
           className="garage-placeholder"
           style={{ display: photoUrl ? 'none' : 'flex' }}
         >
-          <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.5 3.3C2 11.5 2 11.7 2 12v4c0 .6.4 1 1 1h2" />
-            <circle cx="7" cy="17" r="2" />
-            <path d="M9 17h6" />
-            <circle cx="17" cy="17" r="2" />
-          </svg>
+          <span className="material-symbols-outlined text-4xl text-slate-500">garage</span>
           <span className="text-xs text-muted mt-1">{garage.city}</span>
         </div>
 
         {garage.isVerified && (
           <span className="badge badge-verified garage-badge-floating">
-            ✓ Verified
+            <span className="material-symbols-outlined text-xs">verified</span> Verified
           </span>
         )}
+
         {garage.latitude != null && garage.longitude != null && (
           <span
-            className="badge badge-secondary text-[10px] font-mono absolute top-2 right-2 px-1.5 py-0.5 rounded shadow"
+            className="badge badge-secondary text-[10px] font-mono absolute top-3 right-3 px-2 py-0.5 shadow"
             title={`GPS: ${Number(garage.latitude).toFixed(4)}, ${Number(garage.longitude).toFixed(4)}`}
           >
-            📍 Map Pin
+            📍 GPS Pin
+          </span>
+        )}
+
+        {distanceKm != null && (
+          <span
+            className="badge badge-accent text-[11px] font-bold absolute bottom-3 left-3 px-2 py-0.5 shadow-md flex items-center gap-1"
+            title={`${distanceKm.toFixed(2)} km from current location`}
+          >
+            <span className="material-symbols-outlined text-xs">near_me</span>
+            {distanceKm < 1 ? `${Math.round(distanceKm * 1000)} m away` : `${distanceKm.toFixed(1)} km away`}
           </span>
         )}
       </div>
 
-      <div className="card-body garage-card-content">
+      <div className="garage-card-content">
         <div className="garage-card-header">
-          <h3 className="garage-title">
-            <Link to={`/garages/${garage.slug}`} className="garage-title-link">
-              {garage.name}
-            </Link>
-          </h3>
-          <p className="garage-city-label text-muted text-xs">
-            📍 {garage.city}, {garage.state}
-          </p>
+          <div>
+            <h3 className="garage-title">
+              <Link to={`/garages/${garage.slug}`} className="garage-title-link">
+                {garage.name}
+              </Link>
+            </h3>
+            <p className="garage-city-label">
+              📍 {garage.city}, {garage.state}
+            </p>
+          </div>
         </div>
 
-        <p className="garage-address text-xs text-secondary">
+        <p className="garage-address">
           {garage.addressLine1}
+          {garage.addressLine2 ? `, ${garage.addressLine2}` : ''}
         </p>
 
         {garage.phoneNumber && (
-          <p className="garage-phone text-xs text-muted">
+          <p className="garage-phone">
             📞 {garage.phoneNumber}
           </p>
         )}
 
-        <div className="garage-card-footer mt-auto pt-3">
-          <Link to={`/garages/${garage.slug}`} className="btn btn-outline btn-sm w-full">
-            View Details & Reviews →
+        {garage.serviceNames && garage.serviceNames.length > 0 && (
+          <div className="flex flex-wrap gap-1 my-2">
+            {garage.serviceNames.slice(0, 3).map((sName) => (
+              <span
+                key={sName}
+                className="inline-block px-2 py-0.5 rounded text-[10px] font-medium bg-surface-raised text-secondary border border-border"
+              >
+                🛠️ {sName}
+              </span>
+            ))}
+            {garage.serviceNames.length > 3 && (
+              <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium text-muted bg-surface-raised">
+                +{garage.serviceNames.length - 3} more
+              </span>
+            )}
+          </div>
+        )}
+
+        <div className="garage-card-footer">
+          <span className="text-xs text-muted">
+            Independent Workshop
+          </span>
+          <Link to={`/garages/${garage.slug}`} className="btn btn-outline btn-sm">
+            View Profile →
           </Link>
         </div>
       </div>

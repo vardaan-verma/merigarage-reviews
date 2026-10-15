@@ -1,0 +1,5 @@
+# Large raw source images
+images/
+
+# Local test artifacts
+cookies.txt

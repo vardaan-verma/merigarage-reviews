@@ -216,4 +216,107 @@ class AuthControllerTest {
 
         assertThat(session.isInvalid()).isTrue();
     }
+
+    @Test
+    void googleAuth_NewUser_RegistersAndSetsSession() throws Exception {
+        String unique = UUID.randomUUID().toString().substring(0, 8);
+        String email = "google.new." + unique + "@example.com";
+        String credential = "test_google_token:" + email + ":Google Motorist";
+
+        String jsonBody = """
+                {
+                    "credential": "%s"
+                }
+                """.formatted(credential);
+
+        MvcResult result = mockMvc.perform(post("/api/auth/google")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").isNumber())
+                .andExpect(jsonPath("$.email").value(email))
+                .andExpect(jsonPath("$.fullName").value("Google Motorist"))
+                .andExpect(jsonPath("$.roles[0]").value("ROLE_USER"))
+                .andExpect(jsonPath("$.password").doesNotExist())
+                .andExpect(jsonPath("$.passwordHash").doesNotExist())
+                .andReturn();
+
+        MockHttpSession session = (MockHttpSession) result.getRequest().getSession(false);
+        assertThat(session).isNotNull();
+
+        // Check /api/auth/me returns the authenticated Google user
+        mockMvc.perform(get("/api/auth/me").session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value(email))
+                .andExpect(jsonPath("$.fullName").value("Google Motorist"));
+
+        // Verify user exists in database and has an emailVerifiedAt timestamp
+        User user = userRepository.findByEmail(email).orElseThrow();
+        assertThat(user.getEmailVerifiedAt()).isNotNull();
+        assertThat(user.getStatus()).isEqualTo(UserStatus.ACTIVE);
+    }
+
+    @Test
+    void googleAuth_ExistingUser_LogsInAndSetsSession() throws Exception {
+        String unique = UUID.randomUUID().toString().substring(0, 8);
+        String email = "google.existing." + unique + "@example.com";
+        userService.registerUser(new RegisterUserRequest(email, "Password123!", "Existing User", null));
+
+        String credential = "test_google_token:" + email + ":Existing User";
+        String jsonBody = """
+                {
+                    "credential": "%s"
+                }
+                """.formatted(credential);
+
+        MvcResult result = mockMvc.perform(post("/api/auth/google")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value(email))
+                .andReturn();
+
+        MockHttpSession session = (MockHttpSession) result.getRequest().getSession(false);
+        assertThat(session).isNotNull();
+
+        mockMvc.perform(get("/api/auth/me").session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value(email));
+    }
+
+    @Test
+    void googleAuth_SuspendedUser_ReturnsBadRequest() throws Exception {
+        String unique = UUID.randomUUID().toString().substring(0, 8);
+        String email = "google.suspended." + unique + "@example.com";
+        User user = userService.registerUser(new RegisterUserRequest(email, "Password123!", "Suspended User", null));
+        user.setStatus(UserStatus.SUSPENDED);
+        userRepository.save(user);
+
+        String credential = "test_google_token:" + email + ":Suspended User";
+        String jsonBody = """
+                {
+                    "credential": "%s"
+                }
+                """.formatted(credential);
+
+        mockMvc.perform(post("/api/auth/google")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonBody))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Account is suspended. Please contact platform support."));
+    }
+
+    @Test
+    void googleAuth_BlankCredential_ReturnsBadRequest() throws Exception {
+        String jsonBody = """
+                {
+                    "credential": ""
+                }
+                """;
+
+        mockMvc.perform(post("/api/auth/google")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonBody))
+                .andExpect(status().isBadRequest());
+    }
 }

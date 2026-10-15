@@ -49,6 +49,8 @@ public class PublicGarageController {
     public ResponseEntity<PagedResponse<GarageSummaryDto>> listApprovedGarages(
             @RequestParam(required = false) String city,
             @RequestParam(required = false) Boolean isVerified,
+            @RequestParam(required = false) Integer serviceId,
+            @RequestParam(required = false) String serviceSlug,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(defaultValue = "name") String sortBy,
@@ -64,16 +66,16 @@ public class PublicGarageController {
         };
 
         Pageable pageable = PageRequest.of(validatedPage, validatedSize, Sort.by(direction, safeSort));
-        Page<Garage> garagePage = garageService.findPublicApprovedGarages(city, isVerified, pageable);
+        Page<Garage> garagePage = garageService.findPublicApprovedGarages(city, isVerified, serviceId, serviceSlug, pageable);
+
+        List<Long> garageIds = garagePage.getContent().stream().map(Garage::getId).toList();
+        java.util.Map<Long, Long> coverPhotoMap = mediaService.getCoverPhotoIdsForGarages(garageIds);
+        java.util.Map<Long, List<String>> servicesMap = serviceCatalogueService.getServiceNamesForGarages(garageIds);
 
         Page<GarageSummaryDto> summaryPage = garagePage.map(garage -> {
-            List<GaragePhoto> photos = mediaService.getActivePhotosForGarage(garage.getId());
-            Long coverPhotoId = photos.stream()
-                    .filter(p -> Boolean.TRUE.equals(p.getIsCover()))
-                    .findFirst()
-                    .map(GaragePhoto::getId)
-                    .orElse(photos.isEmpty() ? null : photos.get(0).getId());
-            return GarageSummaryDto.fromEntity(garage, coverPhotoId);
+            Long coverPhotoId = coverPhotoMap.get(garage.getId());
+            List<String> serviceNames = servicesMap.getOrDefault(garage.getId(), List.of());
+            return GarageSummaryDto.fromEntity(garage, coverPhotoId, serviceNames);
         });
 
         return ResponseEntity.ok(PagedResponse.fromPage(summaryPage));

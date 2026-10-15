@@ -1,5 +1,6 @@
 import type {
   CreateGarageRequest,
+  CreateQuoteRequest,
   CreateReviewRequest,
   DocumentType,
   DocumentVerificationStatus,
@@ -13,6 +14,9 @@ import type {
   GarageSummaryDto,
   PagedResponse,
   ProfileEditRequest,
+  QuoteCustomerActionRequest,
+  QuoteOwnerResponseRequest,
+  QuoteRequestDto,
   ReviewDto,
   ReviewResponseDto,
   ServiceCategory,
@@ -96,12 +100,22 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     options.body = JSON.stringify(options.json);
   }
 
-  const response = await fetch(url, {
-    ...options,
-    method,
-    headers,
-    credentials: 'include',
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...options,
+      method,
+      headers,
+      credentials: 'include',
+    });
+  } catch (err: any) {
+    if (err instanceof ApiError) throw err;
+    const isFailedToFetch = err?.message === 'Failed to fetch' || err?.name === 'TypeError';
+    const message = isFailedToFetch
+      ? 'Unable to connect to the MeriGarage server. Please check your internet connection or verify the server is running.'
+      : err?.message || 'Network request failed.';
+    throw new ApiError(0, message, 'NetworkError');
+  }
 
   if (response.status === 204) {
     return undefined as unknown as T;
@@ -121,6 +135,9 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
         errorMessage = errorJson.message || errorMessage;
         errorType = errorJson.error || errorType;
         details = errorJson.details || [];
+        if (details.length > 0 && (!errorJson.message || errorJson.message === 'Validation failed for request fields.')) {
+          errorMessage = details.join('; ');
+        }
       } catch {
         // Fallback to text
       }
@@ -131,6 +148,16 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
       } catch {
         // Fallback
       }
+    }
+
+    if (response.status === 401) {
+      errorMessage = 'Your session has expired or authentication is required. Please log in.';
+    } else if (response.status === 403 && (!errorMessage || errorMessage.includes('Forbidden') || errorMessage.includes('Access denied'))) {
+      errorMessage = 'You do not have permission to manage this workshop.';
+    } else if (response.status === 413) {
+      errorMessage = 'Uploaded file exceeds the maximum allowed limit of 5 MB.';
+    } else if (response.status === 409) {
+      errorMessage = errorMessage || 'The server is currently busy processing another request for this workshop. Please retry in a moment.';
     }
 
     throw new ApiError(response.status, errorMessage, errorType, details);
@@ -150,6 +177,12 @@ export const api = {
       request<UserDto>('/api/auth/login', {
         method: 'POST',
         json: { email, password },
+      }),
+
+    googleAuth: (credential: string): Promise<UserDto> =>
+      request<UserDto>('/api/auth/google', {
+        method: 'POST',
+        json: { credential },
       }),
 
     register: (data: {
@@ -181,6 +214,8 @@ export const api = {
     list: (params?: {
       city?: string;
       isVerified?: boolean;
+      serviceId?: number;
+      serviceSlug?: string;
       page?: number;
       size?: number;
       sortBy?: string;
@@ -189,6 +224,8 @@ export const api = {
       const sp = new URLSearchParams();
       if (params?.city) sp.set('city', params.city);
       if (params?.isVerified !== undefined) sp.set('isVerified', String(params.isVerified));
+      if (params?.serviceId !== undefined) sp.set('serviceId', String(params.serviceId));
+      if (params?.serviceSlug) sp.set('serviceSlug', params.serviceSlug);
       if (params?.page !== undefined) sp.set('page', String(params.page));
       if (params?.size !== undefined) sp.set('size', String(params.size));
       if (params?.sortBy) sp.set('sortBy', params.sortBy);
@@ -209,6 +246,9 @@ export const api = {
   garageManagement: {
     getMyGarages: (): Promise<GarageSummaryDto[]> =>
       request<GarageSummaryDto[]>('/api/garages/my-garages'),
+
+    getMyGarageById: (id: number): Promise<GarageDetailDto> =>
+      request<GarageDetailDto>(`/api/garages/my-garages/${id}`),
 
     createListing: (data: CreateGarageRequest): Promise<GarageSummaryDto> =>
       request<GarageSummaryDto>('/api/garages', {
@@ -339,6 +379,35 @@ export const api = {
     list: (): Promise<ServiceDto[]> => request<ServiceDto[]>('/api/services'),
 
     getById: (id: number): Promise<ServiceDto> => request<ServiceDto>(`/api/services/${id}`),
+
+    adminList: (): Promise<ServiceDto[]> => request<ServiceDto[]>('/api/admin/services'),
+
+    create: (data: {
+      name: string;
+      category: string;
+      description?: string;
+      displayOrder?: number;
+      isActive?: boolean;
+    }): Promise<ServiceDto> =>
+      request<ServiceDto>('/api/admin/services', {
+        method: 'POST',
+        json: data,
+      }),
+
+    update: (
+      id: number,
+      data: {
+        name: string;
+        category: string;
+        description?: string;
+        displayOrder?: number;
+        isActive?: boolean;
+      }
+    ): Promise<ServiceDto> =>
+      request<ServiceDto>(`/api/admin/services/${id}`, {
+        method: 'PUT',
+        json: data,
+      }),
   },
 
   // Admin
@@ -454,4 +523,41 @@ export const api = {
         json: data,
       }),
   },
+
+  // Quote Requests
+  quotes: {
+    create: (data: CreateQuoteRequest): Promise<QuoteRequestDto> =>
+      request<QuoteRequestDto>('/api/quote-requests', {
+        method: 'POST',
+        json: data,
+      }),
+
+    getMyRequests: (): Promise<QuoteRequestDto[]> =>
+      request<QuoteRequestDto[]>('/api/quote-requests/my-requests'),
+
+    getForGarage: (garageId: number): Promise<QuoteRequestDto[]> =>
+      request<QuoteRequestDto[]>(`/api/quote-requests/garage/${garageId}`),
+
+    getById: (id: number): Promise<QuoteRequestDto> =>
+      request<QuoteRequestDto>(`/api/quote-requests/${id}`),
+
+    ownerResponse: (id: number, data: QuoteOwnerResponseRequest): Promise<QuoteRequestDto> =>
+      request<QuoteRequestDto>(`/api/quote-requests/${id}/owner-response`, {
+        method: 'POST',
+        json: data,
+      }),
+
+    customerAction: (id: number, data: QuoteCustomerActionRequest): Promise<QuoteRequestDto> =>
+      request<QuoteRequestDto>(`/api/quote-requests/${id}/customer-action`, {
+        method: 'POST',
+        json: data,
+      }),
+
+    addMessage: (id: number, messageText: string): Promise<QuoteRequestDto> =>
+      request<QuoteRequestDto>(`/api/quote-requests/${id}/messages`, {
+        method: 'POST',
+        json: { messageText },
+      }),
+  },
 };
+

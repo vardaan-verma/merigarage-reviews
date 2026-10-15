@@ -17,5 +17,11 @@ public interface ServiceRepository extends JpaRepository<Service, Integer> {
 
     List<Service> findByIsActiveTrueOrderByDisplayOrderAsc();
 
+    List<Service> findAllByOrderByDisplayOrderAscIdAsc();
+
     List<Service> findByCategoryAndIsActiveTrue(ServiceCategory category);
+
+    boolean existsByNameIgnoreCase(String name);
+
+    boolean existsByNameIgnoreCaseAndIdNot(String name, Integer id);
 }

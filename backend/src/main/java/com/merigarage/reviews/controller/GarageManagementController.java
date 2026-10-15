@@ -61,6 +61,32 @@ public class GarageManagementController {
         return ResponseEntity.ok(dtos);
     }
 
+    @GetMapping("/my-garages/{id}")
+    public ResponseEntity<GarageDetailDto> getMyGarageById(@PathVariable Long id) {
+        User currentUser = securityContextService.getRequiredCurrentUser();
+        verifyGarageOwnership(id, currentUser);
+
+        Garage garage = garageService.getGarageById(id);
+        List<GaragePhoto> photos = mediaService.getActivePhotosForGarage(id);
+        Long coverPhotoId = photos.stream()
+                .filter(p -> Boolean.TRUE.equals(p.getIsCover()))
+                .findFirst()
+                .map(GaragePhoto::getId)
+                .orElse(photos.isEmpty() ? null : photos.get(0).getId());
+
+        List<GaragePhotoDto> photoDtos = photos.stream()
+                .filter(p -> !Boolean.TRUE.equals(p.getIsDeleted()))
+                .map(GaragePhotoDto::fromEntity)
+                .toList();
+
+        List<com.merigarage.reviews.domain.GarageService> services = serviceCatalogueService.getServicesForGarage(id);
+        List<GarageServiceDto> serviceDtos = services.stream()
+                .map(GarageServiceDto::fromEntity)
+                .toList();
+
+        return ResponseEntity.ok(GarageDetailDto.fromEntity(garage, coverPhotoId, photoDtos, serviceDtos));
+    }
+
     @PostMapping
     public ResponseEntity<GarageSummaryDto> createGarageListing(@Valid @RequestBody CreateGarageRequest request) {
         User currentUser = securityContextService.getRequiredCurrentUser();
@@ -129,7 +155,12 @@ public class GarageManagementController {
             @RequestParam(value = "displayOrder", required = false) Byte displayOrder
     ) {
         User currentUser = securityContextService.getRequiredCurrentUser();
-        verifyGarageOwnership(id, currentUser);
+        Garage garage = garageService.getGarageById(id);
+        boolean isOwner = garage.getOwner() != null && garage.getOwner().getId().equals(currentUser.getId());
+        boolean isCreatorDuringListing = garage.getOwner() == null && garage.getCreatedBy() != null && garage.getCreatedBy().getId().equals(currentUser.getId());
+        if (!isOwner && !isCreatorDuringListing) {
+            throw new ForbiddenOperationException("Only the authorized garage owner can perform this operation.");
+        }
 
         String storageKey = fileStorageService.storePhoto(file, id);
         PhotoUploadRequest uploadRequest = new PhotoUploadRequest(
@@ -141,7 +172,13 @@ public class GarageManagementController {
                 isCover
         );
 
-        GaragePhoto photo = mediaService.addPhoto(id, uploadRequest, currentUser);
+        GaragePhoto photo;
+        try {
+            photo = mediaService.addPhoto(id, uploadRequest, currentUser);
+        } catch (Exception ex) {
+            fileStorageService.delete(storageKey);
+            throw ex;
+        }
         return ResponseEntity.status(HttpStatus.CREATED).body(GaragePhotoDto.fromEntity(photo));
     }
 
@@ -165,7 +202,7 @@ public class GarageManagementController {
         User currentUser = securityContextService.getRequiredCurrentUser();
         verifyGarageOwnership(id, currentUser);
 
-        mediaService.deletePhoto(photoId, currentUser);
+        mediaService.deletePhoto(id, photoId, currentUser);
         return ResponseEntity.noContent().build();
     }
 
@@ -205,8 +242,7 @@ public class GarageManagementController {
     private void verifyGarageOwnership(Long garageId, User user) {
         Garage garage = garageService.getGarageById(garageId);
         boolean isOwner = garage.getOwner() != null && garage.getOwner().getId().equals(user.getId());
-        boolean isCreator = garage.getCreatedBy() != null && garage.getCreatedBy().getId().equals(user.getId());
-        if (!isOwner && !isCreator) {
+        if (!isOwner) {
             throw new ForbiddenOperationException("Only the authorized garage owner can perform this operation.");
         }
     }

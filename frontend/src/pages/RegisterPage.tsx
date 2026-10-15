@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Alert } from '../components/Alert';
+import { GoogleAuthButton } from '../components/GoogleAuthButton';
 
 export const RegisterPage: React.FC = () => {
   const { register, isAuthenticated } = useAuth();
@@ -12,6 +13,7 @@ export const RegisterPage: React.FC = () => {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -57,13 +59,18 @@ export const RegisterPage: React.FC = () => {
   };
 
   return (
-    <div className="container py-12 flex justify-center">
-      <div className="card p-8 auth-card w-full max-w-md">
+    <div className="container py-12 flex justify-center items-center min-h-[75vh]">
+      <div className="card p-8 auth-card w-full max-w-md shadow-2xl relative border border-border">
+        {/* Brand Header */}
         <div className="text-center mb-6">
-          <span className="brand-dot mx-auto mb-2 inline-block"></span>
-          <h1 className="text-2xl font-bold">Create Account</h1>
+          <div className="flex items-center justify-center gap-2 mb-2">
+            <span className="brand-dot"></span>
+            <span className="font-extrabold text-xl text-white">MeriGarage</span>
+            <span className="text-primary font-bold text-xl">Reviews</span>
+          </div>
+          <h1 className="text-2xl font-extrabold text-white">Create Account</h1>
           <p className="text-secondary text-xs mt-1">
-            Join MeriGarage to write verified reviews, submit listings, or manage your workshop.
+            Join MeriGarage to write verified motorist reviews or manage your auto workshop.
           </p>
         </div>
 
@@ -75,6 +82,24 @@ export const RegisterPage: React.FC = () => {
             className="mb-4"
           />
         )}
+
+        {/* Google OAuth Embed */}
+        <div className="mb-5">
+          <GoogleAuthButton
+            mode="signup"
+            onSuccess={() => {
+              navigate('/profile', { replace: true });
+            }}
+            onError={(err) => setErrorMessage(err)}
+            disabled={submitting}
+          />
+        </div>
+
+        <div className="auth-divider mb-5">
+          <span className="auth-divider-line"></span>
+          <span className="auth-divider-text">OR REGISTER WITH EMAIL</span>
+          <span className="auth-divider-line"></span>
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="form-group">
@@ -115,22 +140,32 @@ export const RegisterPage: React.FC = () => {
             <input
               id="reg-phone"
               type="tel"
-              placeholder="e.g. +91 9876543210"
-              className="form-control"
+              placeholder="+91 9876543210"
+              className="form-control font-mono"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
             />
           </div>
 
           <div className="form-group">
-            <label className="form-label" htmlFor="reg-password">
-              Password * (min. 8 characters)
-            </label>
+            <div className="flex-between items-center mb-1">
+              <label className="form-label mb-0" htmlFor="reg-password">
+                Password * (min. 8 characters)
+              </label>
+              <button
+                type="button"
+                className="text-xs text-secondary hover:text-primary transition-colors focus:outline-none"
+                onClick={() => setShowPassword(!showPassword)}
+              >
+                {showPassword ? 'Hide' : 'Show'}
+              </button>
+            </div>
             <input
               id="reg-password"
-              type="password"
+              type={showPassword ? 'text' : 'password'}
               required
               autoComplete="new-password"
+              placeholder="••••••••••••"
               className="form-control"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -143,9 +178,10 @@ export const RegisterPage: React.FC = () => {
             </label>
             <input
               id="reg-confirm"
-              type="password"
+              type={showPassword ? 'text' : 'password'}
               required
               autoComplete="new-password"
+              placeholder="••••••••••••"
               className="form-control"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
@@ -154,16 +190,17 @@ export const RegisterPage: React.FC = () => {
 
           <button
             type="submit"
-            className="btn btn-primary w-full mt-4"
+            className="btn btn-primary w-full mt-4 flex items-center justify-center gap-2"
             disabled={submitting}
           >
-            {submitting ? 'Creating Account...' : 'Register'}
+            <span className="material-symbols-outlined text-base">person_add</span>
+            <span>{submitting ? 'Creating Account...' : 'Register Account'}</span>
           </button>
         </form>
 
-        <div className="mt-6 pt-4 border-t border-border text-center text-xs text-muted">
+        <div className="mt-6 pt-5 border-t border-border text-center text-xs text-secondary">
           Already have an account?{' '}
-          <Link to="/login" className="text-primary font-medium hover:underline">
+          <Link to="/login" className="text-primary font-bold hover:underline ml-1">
             Sign In here
           </Link>
         </div>

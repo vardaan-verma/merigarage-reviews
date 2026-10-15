@@ -53,6 +53,7 @@ export interface GarageSummaryDto {
   latitude?: number | null;
   longitude?: number | null;
   googleMapsUrl?: string | null;
+  serviceNames?: string[];
 }
 
 export interface GaragePhotoDto {
@@ -208,6 +209,7 @@ export interface CreateGarageRequest {
   googleMapsUrl?: string;
   latitude?: number;
   longitude?: number;
+  serviceIds?: number[];
 }
 
 export interface ProfileEditRequest {
@@ -250,3 +252,88 @@ export interface UpdateReviewRequest {
   reviewTitle?: string;
   reviewText: string;
 }
+
+export type QuoteRequestStatus =
+  | 'PENDING'
+  | 'UNDER_REVIEW'
+  | 'QUOTED'
+  | 'ACCEPTED'
+  | 'DECLINED'
+  | 'CANCELLED'
+  | 'COMPLETED';
+
+export interface QuoteRequestMessageDto {
+  id: number;
+  quoteRequestId: number;
+  senderUserId: number;
+  senderName: string;
+  senderRole: 'CUSTOMER' | 'OWNER';
+  messageText: string;
+  createdAt: string;
+}
+
+export interface QuoteRequestDto {
+  id: number;
+  referenceNumber: string;
+  garageId: number;
+  garageName?: string | null;
+  garageSlug?: string | null;
+  garageCity?: string | null;
+  customerUserId: number;
+  customerName?: string | null;
+  customerEmail?: string | null;
+  vehicleType: string;
+  vehicleMake: string;
+  vehicleModel: string;
+  vehicleYear?: number | null;
+  fuelType?: string | null;
+  registrationNumber?: string | null;
+  odometerReading?: number | null;
+  problemDescription: string;
+  customerMessage?: string | null;
+  contactPhone: string;
+  contactEmail?: string | null;
+  preferredDate?: string | null;
+  estimatedMinPrice?: number | null;
+  estimatedMaxPrice?: number | null;
+  proposedQuoteAmount?: number | null;
+  ownerNotes?: string | null;
+  status: QuoteRequestStatus;
+  createdAt: string;
+  updatedAt: string;
+  services: ServiceDto[];
+  messages: QuoteRequestMessageDto[];
+}
+
+export interface CreateQuoteRequest {
+  garageId: number;
+  serviceIds: number[];
+  vehicleType: string;
+  vehicleMake: string;
+  vehicleModel: string;
+  vehicleYear?: number | null;
+  fuelType?: string | null;
+  registrationNumber?: string | null;
+  odometerReading?: number | null;
+  problemDescription: string;
+  customerMessage?: string | null;
+  contactPhone: string;
+  contactEmail?: string | null;
+  preferredDate?: string | null;
+}
+
+export interface QuoteOwnerResponseRequest {
+  action: 'REVIEW' | 'QUOTE' | 'DECLINE' | 'COMPLETE';
+  proposedQuoteAmount?: number;
+  ownerNotes?: string;
+}
+
+export interface QuoteCustomerActionRequest {
+  action: 'ACCEPT' | 'DECLINE' | 'CANCEL';
+  notes?: string;
+}
+
+export interface QuoteMessageRequest {
+  messageText: string;
+}
+

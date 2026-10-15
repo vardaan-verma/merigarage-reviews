@@ -54,6 +54,12 @@ class ServiceCatalogueControllerTest {
     private com.merigarage.reviews.repository.UserRoleRepository userRoleRepository;
 
     @Autowired
+    private com.merigarage.reviews.repository.AdminPermissionRepository permissionRepository;
+
+    @Autowired
+    private com.merigarage.reviews.repository.UserAdminPermissionRepository userPermissionRepository;
+
+    @Autowired
     private ServiceCatalogueService catalogueService;
 
     private User adminUser;
@@ -71,6 +77,9 @@ class ServiceCatalogueControllerTest {
         adminUser = userService.registerUser(new RegisterUserRequest("admin." + suffix + "@test.com", PASSWORD, "Admin Cat", null));
         com.merigarage.reviews.domain.Role adminRole = roleRepository.findByName(RoleName.ROLE_ADMIN).orElseThrow();
         userRoleRepository.save(new com.merigarage.reviews.domain.UserRole(adminUser, adminRole));
+
+        com.merigarage.reviews.domain.AdminPermission cmPerm = permissionRepository.findByCode(com.merigarage.reviews.domain.enums.AdminPermissionCode.CONTENT_MODERATION).orElseThrow();
+        userPermissionRepository.save(new com.merigarage.reviews.domain.UserAdminPermission(adminUser, cmPerm, adminUser));
 
         regularUser = userService.registerUser(new RegisterUserRequest("user." + suffix + "@test.com", PASSWORD, "Reg User", null));
     }
@@ -156,5 +165,81 @@ class ServiceCatalogueControllerTest {
                         .content(updateJson))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("AC Disinfection & Cleaning"));
+    }
+
+    @Test
+    void getAdminServices_ModerationAdminAllowed_RegularUserForbidden() throws Exception {
+        MockHttpSession userSession = login(regularUser.getEmail());
+        MockHttpSession adminSession = login(adminUser.getEmail());
+
+        mockMvc.perform(get("/api/admin/services")
+                        .session(userSession))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/api/admin/services")
+                        .session(adminSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray());
+    }
+
+    @Test
+    void deactivateService_RemovesFromPublicEndpoint_PreservesInAdminEndpoint() throws Exception {
+        MockHttpSession adminSession = login(adminUser.getEmail());
+        String uniqueName = "Deactivation Test Service " + UUID.randomUUID().toString().substring(0, 8);
+
+        String createJson = """
+                {
+                    "name": "%s",
+                    "category": "MECHANICAL_REPAIR",
+                    "description": "Will be deactivated",
+                    "isActive": true,
+                    "displayOrder": 10
+                }
+                """.formatted(uniqueName);
+
+        MvcResult createRes = mockMvc.perform(post("/api/admin/services")
+                        .session(adminSession)
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(createJson))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        Integer serviceId = com.jayway.jsonpath.JsonPath.read(createRes.getResponse().getContentAsString(), "$.id");
+
+        // Public GET sees the active service
+        mockMvc.perform(get("/api/services"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.id == " + serviceId + ")]").exists());
+
+        // Deactivate via PUT
+        String deactivateJson = """
+                {
+                    "name": "%s",
+                    "category": "MECHANICAL_REPAIR",
+                    "description": "Now deactivated",
+                    "isActive": false,
+                    "displayOrder": 10
+                }
+                """.formatted(uniqueName);
+
+        mockMvc.perform(put("/api/admin/services/{id}", serviceId)
+                        .session(adminSession)
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(deactivateJson))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.isActive").value(false));
+
+        // Public GET no longer sees the deactivated service
+        mockMvc.perform(get("/api/services"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.id == " + serviceId + ")]").doesNotExist());
+
+        // Admin GET still sees the deactivated service
+        mockMvc.perform(get("/api/admin/services")
+                        .session(adminSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.id == " + serviceId + " && @.isActive == false)]").exists());
     }
 }
