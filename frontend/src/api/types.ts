@@ -4,13 +4,18 @@ export type AdminPermissionCode =
   | 'GARAGE_APPROVAL'
   | 'VERIFICATION_REVIEW'
   | 'CLAIM_MANAGEMENT'
-  | 'CONTENT_MODERATION';
+  | 'CONTENT_MODERATION'
+  | 'USER_MANAGEMENT'
+  | 'LEAD_ACCESS'
+  | 'QUOTE_OVERSIGHT'
+  | 'DATA_EXPORT';
 
 export type UserStatus = 'ACTIVE' | 'SUSPENDED' | 'DEACTIVATED';
 
 export type DocumentType =
   | 'TRADE_LICENSE'
   | 'GST_CERTIFICATE'
+  | 'OWNERSHIP_PROOF'
   | 'ID_PROOF'
   | 'UTILITY_BILL'
   | 'BUSINESS_PAN'
@@ -33,6 +38,7 @@ export interface UserDto {
   id: number;
   email: string;
   fullName: string;
+  phoneNumber?: string | null;
   status: UserStatus;
   roles: string[];
   permissions: string[];
@@ -99,6 +105,7 @@ export interface GarageDetailDto {
 export interface GarageDocumentDto {
   id: number;
   garageId: number;
+  claimId?: number | null;
   documentType: DocumentType;
   originalFileName: string;
   contentType: string;
@@ -133,12 +140,30 @@ export interface GarageClaimDto {
   garageId: number;
   garageName: string;
   garageSlug?: string | null;
+  garageCity?: string | null;
+  garageAddress?: string | null;
   claimantUserId: number;
+  claimantFullName?: string | null;
+  claimantName?: string | null;
   claimantEmail: string;
+  claimantPhone?: string | null;
+  businessRegNumber?: string | null;
   claimMessage: string;
   claimStatus: ClaimStatus;
   decisionNotes?: string | null;
   createdAt: string;
+  reviewedAt?: string | null;
+  documents?: GarageDocumentDto[];
+}
+
+export interface SubmitClaimData {
+  claimMessage: string;
+  claimantName?: string;
+  claimantPhone?: string;
+  claimantEmail?: string;
+  businessRegNumber?: string;
+  documentTypes?: DocumentType[];
+  documents?: File[];
 }
 
 export interface ReviewResponseDto {
@@ -337,3 +362,223 @@ export interface QuoteMessageRequest {
   messageText: string;
 }
 
+export type LeadEventType =
+  | 'HOMEPAGE_SEARCH_STARTED'
+  | 'HOMEPAGE_SEARCH_SUBMITTED'
+  | 'EXPLORE_GARAGES_VIEWED'
+  | 'GARAGE_PROFILE_VIEWED'
+  | 'SIGNUP_STARTED'
+  | 'USER_REGISTERED'
+  | 'QUOTE_REQUEST_SUBMITTED'
+  | 'GENERIC_CONVERSION';
+
+export interface TrackLeadEventRequest {
+  eventId?: string;
+  sessionId?: string;
+  eventType: LeadEventType;
+  state?: string;
+  city?: string;
+  vehicleType?: string;
+  vehicleMake?: string;
+  vehicleModel?: string;
+  serviceSlug?: string;
+  serviceName?: string;
+  phoneNumber?: string;
+  garageId?: number;
+  garageSlug?: string;
+  source?: string;
+  consentStatus?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface TrackLeadEventResponse {
+  eventId: string;
+  sessionId: string;
+  eventType: string;
+  status: string;
+  timestamp: string;
+}
+
+export interface LeadEventDto {
+  id: number;
+  eventId: string;
+  sessionId: string;
+  userId?: number | null;
+  userEmail?: string | null;
+  eventType: string;
+  state?: string | null;
+  city?: string | null;
+  vehicleType?: string | null;
+  vehicleMake?: string | null;
+  vehicleModel?: string | null;
+  serviceSlug?: string | null;
+  serviceName?: string | null;
+  maskedPhoneNumber?: string | null;
+  phoneNumber?: string | null;
+  garageId?: number | null;
+  garageSlug?: string | null;
+  source?: string | null;
+  consentStatus?: string | null;
+  createdAt: string;
+}
+
+export interface ServiceUsageDto {
+  serviceId: number;
+  serviceName: string;
+  slug: string;
+  category: string;
+  offeringGaragesCount: number;
+}
+
+export interface AdminUserSummaryDto {
+  id: number;
+  fullName: string;
+  email: string;
+  phoneNumber?: string | null;
+  roles: string[];
+  permissions: string[];
+  status: UserStatus;
+  registrationSource?: string | null;
+  consentStatus?: string | null;
+  emailVerifiedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  linkedGaragesCount: number;
+  quoteRequestsCount: number;
+}
+
+export interface AdminUserDetailDto {
+  user: AdminUserSummaryDto;
+  linkedGarages: GarageSummaryDto[];
+  quoteRequests: QuoteRequestDto[];
+  ownershipClaims: GarageClaimDto[];
+}
+
+export interface UpdateUserStatusRequest {
+  status: UserStatus;
+  reason: string;
+}
+
+export interface GarageApprovalAuditDto {
+  id: number;
+  garageId: number;
+  actionType: string;
+  adminUserId: number;
+  adminUserName: string;
+  previousStatus: string;
+  newStatus: string;
+  previousVerified: boolean;
+  newVerified: boolean;
+  decisionNotes?: string | null;
+  createdAt: string;
+}
+
+export interface AdminGarageDetailDto {
+  id: number;
+  name: string;
+  slug: string;
+  description?: string | null;
+  addressLine1: string;
+  addressLine2?: string | null;
+  city: string;
+  state: string;
+  postalCode: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  phoneNumber: string;
+  email?: string | null;
+  websiteUrl?: string | null;
+  googleMapsUrl?: string | null;
+  approvalStatus: 'PENDING' | 'APPROVED' | 'REJECTED' | 'SUSPENDED';
+  isVerified: boolean;
+  ownerId?: number | null;
+  ownerName?: string | null;
+  ownerEmail?: string | null;
+  createdByUserId?: number | null;
+  createdByName?: string | null;
+  services: string[];
+  documentsCount: number;
+  createdAt: string;
+  updatedAt: string;
+  approvalHistory: GarageApprovalAuditDto[];
+}
+
+export interface AdminQuoteSummaryDto {
+  id: number;
+  referenceNumber: string;
+  garageId: number;
+  garageName: string;
+  garageCity: string;
+  customerUserId?: number | null;
+  customerName?: string | null;
+  customerEmail?: string | null;
+  contactPhone?: string | null;
+  vehicleType?: string | null;
+  vehicleMake?: string | null;
+  vehicleModel?: string | null;
+  vehicleYear?: number | null;
+  problemDescription?: string | null;
+  serviceNames: string[];
+  estimatedMinPrice?: number | null;
+  proposedQuoteAmount?: number | null;
+  ownerNotes?: string | null;
+  status: QuoteRequestStatus;
+  createdAt: string;
+  updatedAt: string;
+  messagesCount: number;
+}
+
+export interface AdminQuoteStatusUpdateRequest {
+  status: QuoteRequestStatus;
+  reason: string;
+}
+
+export interface AdminOverviewMetricsDto {
+  totalUsers: number;
+  customerAccounts: number;
+  garageOwnerAccounts: number;
+  adminAccounts: number;
+  newRegistrations24h: number;
+  newRegistrations7d: number;
+  newRegistrations30d: number;
+  totalGarages: number;
+  activeGarages: number;
+  pendingGarages: number;
+  suspendedGarages: number;
+  rejectedGarages: number;
+  verifiedGarages: number;
+  claimedGarages: number;
+  totalReviews: number;
+  totalLeads: number;
+  homepageSearchSubmissions: number;
+  quoteRequestsByStatus: Record<string, number>;
+  claimsByStatus: Record<string, number>;
+  recentRegistrations: AdminUserSummaryDto[];
+  recentLeads: LeadEventDto[];
+  recentQuoteRequests: AdminQuoteSummaryDto[];
+  serviceCatalogueUsage: ServiceUsageDto[];
+}
+
+export interface ManageRoleRequest {
+  role: RoleName;
+  action: 'GRANT' | 'REVOKE';
+}
+
+export interface ManagePermissionRequest {
+  permission: AdminPermissionCode;
+  action: 'GRANT' | 'REVOKE';
+}
+
+export interface AdminAuditLogDto {
+  id: number;
+  adminUserId?: number | null;
+  adminEmail?: string | null;
+  adminFullName?: string | null;
+  actionType: string;
+  targetType: string;
+  targetId?: number | null;
+  outcome: string;
+  reason?: string | null;
+  metadataJson?: string | null;
+  createdAt: string;
+}

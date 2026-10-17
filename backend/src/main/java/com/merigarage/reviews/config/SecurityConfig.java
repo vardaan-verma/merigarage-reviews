@@ -63,7 +63,7 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf
                         .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
                         .csrfTokenRequestHandler(requestHandler)
-                        .ignoringRequestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/logout", "/api/auth/google")
+                        .ignoringRequestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/logout", "/api/auth/google", "/api/leads/track")
                 )
                 .addFilterAfter(new CsrfCookieFilter(), BasicAuthenticationFilter.class)
                 .securityContext(context -> context.securityContextRepository(securityContextRepository))
@@ -81,7 +81,8 @@ public class SecurityConfig {
                                 "/api/auth/google",
                                 "/api/auth/csrf",
                                 "/api/health/**",
-                                "/api/internal/**"
+                                "/api/internal/**",
+                                "/api/leads/track"
                         ).permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.GET,
                                 "/api/garages",

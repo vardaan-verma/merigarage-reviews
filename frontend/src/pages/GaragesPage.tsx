@@ -8,6 +8,13 @@ import { Pagination } from '../components/Pagination';
 import { Alert } from '../components/Alert';
 import { StateSelect, CitySelect } from '../components/LocationSelect';
 import { findStateForCity, getCitiesForState } from '../data/indiaLocations';
+import {
+  safeTrackLeadEvent,
+  getActiveSearchSession,
+  setActiveSearchSession,
+  clearActiveSearchSession,
+  parseVehicleString,
+} from '../utils/searchSession';
 
 function calculateHaversineDistanceKm(
   lat1: number,
@@ -35,16 +42,31 @@ export const GaragesPage: React.FC = () => {
   const cityParam = searchParams.get('city') || '';
   const stateParam = searchParams.get('state') || findStateForCity(cityParam) || '';
   const serviceSlugParam = searchParams.get('serviceSlug') || '';
+  const searchParam = searchParams.get('search') || '';
+  const vehicleParam = searchParams.get('vehicle') || '';
   const verifiedOnlyParam = searchParams.get('verified') === 'true';
   const sortByParam = searchParams.get('sortBy') === 'distance' ? 'distance' : 'name';
   const pageParam = parseInt(searchParams.get('page') || '0', 10);
   const latParam = searchParams.get('lat') ? parseFloat(searchParams.get('lat')!) : null;
   const lngParam = searchParams.get('lng') ? parseFloat(searchParams.get('lng')!) : null;
 
+  // Active session workflow (precedence: URL > Session)
+  const activeSession = useMemo(() => getActiveSearchSession(), []);
+
+  // Precedence rule for vehicle:
+  // 1. Explicit in URL
+  // 2. Explicit in current session workflow
+  // 3. Empty
+  const effectiveVehicle =
+    vehicleParam ||
+    activeSession?.rawVehicle ||
+    (activeSession?.vehicleMake ? `${activeSession.vehicleMake} ${activeSession.vehicleModel}`.trim() : '');
+
   // Local state for inputs
-  const [localState, setLocalState] = useState(stateParam);
-  const [localCity, setLocalCity] = useState(cityParam);
-  const [localServiceSlug, setLocalServiceSlug] = useState(serviceSlugParam);
+  const [localState, setLocalState] = useState(stateParam || activeSession?.state || '');
+  const [localCity, setLocalCity] = useState(cityParam || activeSession?.city || '');
+  const [localServiceSlug, setLocalServiceSlug] = useState(serviceSlugParam || activeSession?.serviceSlug || '');
+  const [localVehicle, setLocalVehicle] = useState(effectiveVehicle);
   const [localVerifiedOnly, setLocalVerifiedOnly] = useState(verifiedOnlyParam);
   const [localSortBy, setLocalSortBy] = useState<'name' | 'distance'>(sortByParam);
 
@@ -56,6 +78,21 @@ export const GaragesPage: React.FC = () => {
       .then((data) => setAvailableServices(data || []))
       .catch(() => {});
   }, []);
+
+  // Track distinct event: Visitor opens Explore Garages
+  const sessionVehicle = activeSession?.rawVehicle;
+  useEffect(() => {
+    const vehicleInfo = parseVehicleString(vehicleParam || sessionVehicle);
+    safeTrackLeadEvent('EXPLORE_GARAGES_VIEWED', {
+      state: stateParam || undefined,
+      city: cityParam || undefined,
+      serviceSlug: serviceSlugParam || undefined,
+      vehicleType: vehicleInfo.type,
+      vehicleMake: vehicleInfo.make,
+      vehicleModel: vehicleInfo.model,
+      source: 'explore_garages',
+    });
+  }, [cityParam, stateParam, serviceSlugParam, vehicleParam, sessionVehicle]);
 
   // User Geolocation state
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(
@@ -69,6 +106,7 @@ export const GaragesPage: React.FC = () => {
   // Data state
   const [garagesData, setGaragesData] = useState<PagedResponse<GarageSummaryDto> | null>(null);
   const [selectedGarageId, setSelectedGarageId] = useState<number | null>(null);
+  const [showMap, setShowMap] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -86,8 +124,10 @@ export const GaragesPage: React.FC = () => {
       };
 
       if (cityParam) params.city = cityParam;
+      if (stateParam) params.state = stateParam;
       if (verifiedOnlyParam) params.isVerified = true;
       if (serviceSlugParam) params.serviceSlug = serviceSlugParam;
+      if (searchParam) params.search = searchParam;
 
       const res = await api.garages.list(params);
       setGaragesData(res);
@@ -96,7 +136,7 @@ export const GaragesPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [cityParam, verifiedOnlyParam, serviceSlugParam, pageParam]);
+  }, [cityParam, stateParam, verifiedOnlyParam, serviceSlugParam, searchParam, pageParam]);
 
   useEffect(() => {
     fetchGarages();
@@ -107,12 +147,13 @@ export const GaragesPage: React.FC = () => {
     setLocalCity(cityParam);
     setLocalState(stateParam);
     setLocalServiceSlug(serviceSlugParam);
+    setLocalVehicle(vehicleParam || sessionVehicle || '');
     setLocalVerifiedOnly(verifiedOnlyParam);
     setLocalSortBy(sortByParam);
     if (latParam != null && lngParam != null && !isNaN(latParam) && !isNaN(lngParam)) {
       setUserCoords({ lat: latParam, lng: lngParam });
     }
-  }, [cityParam, stateParam, serviceSlugParam, verifiedOnlyParam, sortByParam, latParam, lngParam]);
+  }, [cityParam, stateParam, serviceSlugParam, vehicleParam, sessionVehicle, verifiedOnlyParam, sortByParam, latParam, lngParam]);
 
   const handleStateChange = (newState: string) => {
     setLocalState(newState);
@@ -247,6 +288,7 @@ export const GaragesPage: React.FC = () => {
     if (localCity.trim()) nextParams.set('city', localCity.trim());
     if (localState.trim()) nextParams.set('state', localState.trim());
     if (localServiceSlug.trim()) nextParams.set('serviceSlug', localServiceSlug.trim());
+    if (localVehicle.trim()) nextParams.set('vehicle', localVehicle.trim());
     if (localVerifiedOnly) nextParams.set('verified', 'true');
     if (localSortBy === 'distance' && userCoords) {
       nextParams.set('sortBy', 'distance');
@@ -254,6 +296,19 @@ export const GaragesPage: React.FC = () => {
       nextParams.set('lng', userCoords.lng.toString());
     }
     nextParams.set('page', '0');
+
+    // Update active search session so subsequent flows retain latest user filters
+    const vehicleInfo = parseVehicleString(localVehicle.trim());
+    setActiveSearchSession({
+      state: localState.trim() || undefined,
+      city: localCity.trim() || undefined,
+      serviceSlug: localServiceSlug.trim() || undefined,
+      vehicleType: vehicleInfo.type,
+      vehicleMake: vehicleInfo.make,
+      vehicleModel: vehicleInfo.model,
+      rawVehicle: localVehicle.trim() || undefined,
+      source: 'explore_garages',
+    });
 
     setSearchParams(nextParams);
   };
@@ -275,10 +330,12 @@ export const GaragesPage: React.FC = () => {
     setLocalCity('');
     setLocalState('');
     setLocalServiceSlug('');
+    setLocalVehicle('');
     setLocalVerifiedOnly(false);
     setLocalSortBy('name');
     setUserCoords(null);
     setLocationMessage(null);
+    clearActiveSearchSession();
     setSearchParams(new URLSearchParams());
   };
 
@@ -302,8 +359,10 @@ export const GaragesPage: React.FC = () => {
                 `Found ${garagesData.totalElements} ${
                   garagesData.totalElements === 1 ? 'garage' : 'garages'
                 }${
+                  vehicleParam ? ` for ${vehicleParam}` : ''
+                }${
                   serviceSlugParam
-                    ? ` for ${availableServices.find((s) => s.slug === serviceSlugParam)?.name || serviceSlugParam}`
+                    ? ` • ${availableServices.find((s) => s.slug === serviceSlugParam)?.name || serviceSlugParam}`
                     : ''
                 } in ${cityParam || stateParam || 'India'}`
               ) : (
@@ -317,6 +376,22 @@ export const GaragesPage: React.FC = () => {
 
           {/* Quick Filter Pill Chips */}
           <div className="flex flex-wrap gap-2">
+            {vehicleParam && (
+              <button
+                type="button"
+                onClick={() => {
+                  const next = new URLSearchParams(searchParams);
+                  next.delete('vehicle');
+                  next.set('page', '0');
+                  setSearchParams(next);
+                }}
+                className="btn btn-sm btn-primary flex items-center gap-1 cursor-pointer"
+                title="Clear vehicle filter"
+              >
+                <span>🚗 {vehicleParam} ✕</span>
+              </button>
+            )}
+
             {serviceSlugParam && (
               <button
                 type="button"
@@ -370,13 +445,44 @@ export const GaragesPage: React.FC = () => {
                 📍 {cityName}
               </button>
             ))}
+
+            <button
+              type="button"
+              onClick={() => setShowMap(!showMap)}
+              className={`btn btn-sm ${showMap ? 'btn-primary' : 'btn-secondary'} inline-flex items-center gap-1.5 cursor-pointer`}
+              title="Toggle interactive map view"
+            >
+              <span className="material-symbols-outlined text-sm">{showMap ? 'close' : 'map'}</span>
+              <span>{showMap ? 'Close Map' : 'View Map'}</span>
+            </button>
           </div>
         </div>
+      </div>
 
-        {/* Detailed Search & Filter Panel */}
-        <div className="card p-6 mb-8 filter-panel">
-          <form onSubmit={handleApplyFilters} className="filter-form">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {error && <Alert type="error" message={error} className="mb-6" />}
+
+      {/* 2-Column Discovery Layout: Left Filters Sidebar + Right Garage Results */}
+      <div className="explore-garages-layout mb-8">
+        {/* Left Column: Filter Panel Card */}
+        <aside className="filters-sidebar">
+          <div className="card p-5 filter-panel">
+            <div className="flex-between items-center mb-4">
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary text-xl">tune</span>
+                Filters
+              </h2>
+              {(cityParam || stateParam || serviceSlugParam || vehicleParam || verifiedOnlyParam || sortByParam === 'distance') && (
+                <button
+                  type="button"
+                  onClick={handleResetFilters}
+                  className="text-xs text-secondary hover:text-primary transition-colors cursor-pointer"
+                >
+                  Clear all
+                </button>
+              )}
+            </div>
+
+            <form onSubmit={handleApplyFilters} className="filters-form-vertical">
               <div className="form-group mb-0">
                 <label htmlFor="filter-state" className="form-label">
                   Filter by State / UT
@@ -385,7 +491,7 @@ export const GaragesPage: React.FC = () => {
                   id="filter-state"
                   value={localState}
                   onChange={handleStateChange}
-                  placeholder="All States & Union Territories"
+                  placeholder="All States & UTs"
                 />
               </div>
 
@@ -421,12 +527,26 @@ export const GaragesPage: React.FC = () => {
                 </select>
               </div>
 
+              <div className="form-group mb-0">
+                <label htmlFor="filter-vehicle" className="form-label">
+                  Vehicle / Car
+                </label>
+                <input
+                  id="filter-vehicle"
+                  type="text"
+                  className="form-control"
+                  placeholder="e.g. Tata Harrier, Swift"
+                  value={localVehicle}
+                  onChange={(e) => setLocalVehicle(e.target.value)}
+                />
+              </div>
+
               {/* Single User-Facing Sort Control: Distance from Current Location vs Default */}
               <div className="form-group mb-0">
                 <label htmlFor="filter-sort-by" className="form-label flex-between">
                   <span>Sort Order</span>
                   {sortByParam === 'distance' && userCoords && (
-                    <span className="text-xs text-accent font-semibold">📍 Nearest First</span>
+                    <span className="text-xs text-accent font-semibold">📍 Nearest</span>
                   )}
                 </label>
                 <div className="flex gap-2 items-center">
@@ -450,52 +570,62 @@ export const GaragesPage: React.FC = () => {
                     className="btn btn-secondary btn-sm whitespace-nowrap"
                     title="Detect your coordinates using GPS"
                   >
-                    {locating ? 'Locating...' : '📍 GPS'}
+                    {locating ? '...' : '📍 GPS'}
                   </button>
                 </div>
               </div>
-            </div>
 
-            {locationMessage && (
-              <p className="text-xs text-danger mt-3 mb-0 font-medium">
-                {locationMessage}
-              </p>
-            )}
+              {locationMessage && (
+                <p className="text-xs text-danger mt-1 mb-0 font-medium">
+                  {locationMessage}
+                </p>
+              )}
 
-            <div className="flex-between items-center mt-5 pt-4 border-t border-border flex-wrap gap-4">
-              <label className="checkbox-label flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={localVerifiedOnly}
-                  onChange={(e) => setLocalVerifiedOnly(e.target.checked)}
-                  className="form-checkbox"
-                />
-                <span className="text-sm font-medium text-white">Show Verified Garages Only</span>
-              </label>
+              <div className="pt-3 border-t border-border">
+                <label className="checkbox-label flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={localVerifiedOnly}
+                    onChange={(e) => setLocalVerifiedOnly(e.target.checked)}
+                    className="form-checkbox"
+                  />
+                  <span className="text-xs font-semibold text-white">Show Verified Garages Only</span>
+                </label>
+              </div>
 
-              <div className="flex gap-2">
+              <div className="flex gap-2 pt-2">
                 <button
                   type="button"
-                  className="btn btn-secondary btn-sm"
+                  className="btn btn-secondary btn-sm flex-1"
                   onClick={handleResetFilters}
                 >
                   Reset
                 </button>
-                <button type="submit" className="btn btn-primary btn-sm">
+                <button type="submit" className="btn btn-primary btn-sm flex-1">
                   Apply Filters
                 </button>
               </div>
+            </form>
+          </div>
+        </aside>
+
+        {/* Right Column: Garage Results & Optional Map */}
+        <div className="garages-results-col">
+          {showMap && (
+            <div className="mb-6 card p-4 border border-border">
+              <GarageSearchMap
+                garages={garagesWithDistance.map((item) => item.garage)}
+                selectedGarageId={selectedGarageId}
+                onSelectGarage={(id) => {
+                  setSelectedGarageId(id);
+                  const el = document.getElementById(`garage-${id}`);
+                  el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }}
+                loading={loading}
+              />
             </div>
-          </form>
-        </div>
-      </div>
+          )}
 
-      {error && <Alert type="error" message={error} className="mb-6" />}
-
-      {/* Side-by-Side Results & Map (60% / 40%) */}
-      <div className="garages-layout mb-8">
-        {/* Left Column: Garage Cards & Pagination */}
-        <div className="garages-list-col">
           {loading ? (
             <div className="center-loader py-12">
               <div className="spinner"></div>
@@ -540,20 +670,6 @@ export const GaragesPage: React.FC = () => {
               </button>
             </div>
           )}
-        </div>
-
-        {/* Right Column: Dynamic Interactive Google Map */}
-        <div className="garages-map-col" style={{ position: 'sticky', top: '6rem' }}>
-          <GarageSearchMap
-            garages={garagesWithDistance.map((item) => item.garage)}
-            selectedGarageId={selectedGarageId}
-            onSelectGarage={(id) => {
-              setSelectedGarageId(id);
-              const el = document.getElementById(`garage-${id}`);
-              el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            }}
-            loading={loading}
-          />
         </div>
       </div>
     </div>

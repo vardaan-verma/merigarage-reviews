@@ -9,6 +9,7 @@ import java.time.LocalDateTime;
 public record GarageDocumentDto(
         Long id,
         Long garageId,
+        Long claimId,
         DocumentType documentType,
         String originalFileName,
         String contentType,
@@ -21,6 +22,7 @@ public record GarageDocumentDto(
         return new GarageDocumentDto(
                 doc.getId(),
                 doc.getGarage().getId(),
+                doc.getClaim() != null ? doc.getClaim().getId() : null,
                 doc.getDocumentType(),
                 doc.getOriginalFileName(),
                 doc.getContentType(),

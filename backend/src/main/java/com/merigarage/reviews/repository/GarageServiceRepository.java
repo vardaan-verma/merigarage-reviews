@@ -29,6 +29,8 @@ public interface GarageServiceRepository extends JpaRepository<GarageService, Ga
 
     List<GarageService> findByServiceId(Integer serviceId);
 
+    long countByServiceIdAndIsAvailableTrue(Integer serviceId);
+
     void deleteByGarageId(Long garageId);
 
     @org.springframework.data.jpa.repository.Query("""

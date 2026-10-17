@@ -24,7 +24,11 @@ export const Navbar: React.FC = () => {
     hasPermission('GARAGE_APPROVAL') ||
     hasPermission('CLAIM_MANAGEMENT') ||
     hasPermission('VERIFICATION_REVIEW') ||
-    hasPermission('CONTENT_MODERATION');
+    hasPermission('CONTENT_MODERATION') ||
+    hasPermission('USER_MANAGEMENT') ||
+    hasPermission('LEAD_ACCESS') ||
+    hasPermission('QUOTE_OVERSIGHT') ||
+    hasPermission('DATA_EXPORT');
 
   return (
     <nav className="navbar" role="navigation" aria-label="Main Navigation">
@@ -40,28 +44,38 @@ export const Navbar: React.FC = () => {
           />
           <img
             src={merigarageWordmark}
-            alt="Meri Garage"
+            alt="MeriGarage"
             className="navbar-brand-wordmark"
             height="24"
           />
-          <span className="brand-tag">Reviews</span>
         </Link>
 
-        {/* Mobile menu trigger */}
-        <button
-          className="mobile-toggle"
-          aria-label="Toggle navigation menu"
-          aria-expanded={mobileMenuOpen}
-          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-        >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            {mobileMenuOpen ? (
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            ) : (
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-            )}
-          </svg>
-        </button>
+        {/* Mobile menu trigger & profile icon matching reference State 01/02 */}
+        <div className="mobile-nav-controls">
+          <button
+            className="mobile-toggle"
+            aria-label="Toggle navigation menu"
+            aria-expanded={mobileMenuOpen}
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              {mobileMenuOpen ? (
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              ) : (
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+              )}
+            </svg>
+          </button>
+          <Link
+            to={isAuthenticated ? '/profile' : '/login'}
+            className="mobile-profile-icon-btn"
+            aria-label={isAuthenticated ? 'User Profile' : 'Login'}
+            onClick={() => setMobileMenuOpen(false)}
+            title={isAuthenticated ? (user?.fullName || 'My Account') : 'Sign In'}
+          >
+            <span className="material-symbols-outlined text-xl">account_circle</span>
+          </Link>
+        </div>
 
         {/* Main Desktop & Mobile Drawer Menu */}
         <div className={`navbar-menu ${mobileMenuOpen ? 'open' : ''}`}>
@@ -145,30 +159,14 @@ export const Navbar: React.FC = () => {
                 </button>
               </div>
             ) : (
-              <div className="auth-buttons">
-                <a
-                  href="tel:+919876543210"
-                  className="navbar-helpline"
-                  title="Call MeriGarage Helpline"
-                >
-                  <span className="material-symbols-outlined text-sm text-primary">call</span>
-                  <span className="helpline-text">
-                    <span className="helpline-label">Call Us:</span> +91 98765 43210
-                  </span>
-                </a>
+              <div className="auth-buttons flex items-center gap-3">
                 <Link
                   to="/login"
-                  className="btn btn-secondary btn-sm"
+                  className="btn btn-secondary btn-sm flex items-center gap-1.5 border border-border"
                   onClick={() => setMobileMenuOpen(false)}
                 >
-                  Sign In
-                </Link>
-                <Link
-                  to="/submit-garage"
-                  className="btn btn-primary btn-sm btn-nav-cta"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  List Your Garage
+                  <span className="material-symbols-outlined text-sm">login</span>
+                  Login
                 </Link>
               </div>
             )}

@@ -7,12 +7,14 @@ import type {
   ReviewDto,
   PagedResponse,
   CreateReviewRequest,
+  DocumentType,
 } from '../api/types';
 import { StarRating } from '../components/StarRating';
 import { Pagination } from '../components/Pagination';
 import { Alert } from '../components/Alert';
 import { Modal } from '../components/Modal';
 import { QuoteRequestModal } from '../components/QuoteRequestModal';
+import { safeTrackLeadEvent, getActiveSearchSession } from '../utils/searchSession';
 
 export const GarageDetailPage: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
@@ -55,6 +57,12 @@ export const GarageDetailPage: React.FC = () => {
   // Claim Modal State
   const [isClaimModalOpen, setIsClaimModalOpen] = useState(false);
   const [claimMessage, setClaimMessage] = useState('');
+  const [claimantName, setClaimantName] = useState('');
+  const [claimantPhone, setClaimantPhone] = useState('');
+  const [claimantEmail, setClaimantEmail] = useState('');
+  const [businessRegNumber, setBusinessRegNumber] = useState('');
+  const [claimDocType, setClaimDocType] = useState<DocumentType>('OWNERSHIP_PROOF');
+  const [claimFile, setClaimFile] = useState<File | null>(null);
   const [claimSubmitting, setClaimSubmitting] = useState(false);
   const [claimError, setClaimError] = useState<string | null>(null);
 
@@ -77,6 +85,22 @@ export const GarageDetailPage: React.FC = () => {
       setError(null);
       const data = await api.garages.getBySlug(slug);
       setGarage(data);
+      if (data) {
+        const session = getActiveSearchSession();
+        safeTrackLeadEvent('GARAGE_PROFILE_VIEWED', {
+          garageId: data.id,
+          garageSlug: data.slug,
+          city: data.city,
+          state: data.state,
+          serviceSlug: session?.serviceSlug,
+          serviceName: session?.serviceName,
+          vehicleType: session?.vehicleType,
+          vehicleMake: session?.vehicleMake,
+          vehicleModel: session?.vehicleModel,
+          source: 'garage_profile',
+          metadata: { garageName: data.name },
+        });
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to load garage details');
     } finally {
@@ -219,6 +243,12 @@ export const GarageDetailPage: React.FC = () => {
       return;
     }
     setClaimMessage('');
+    setClaimantName(user?.fullName || '');
+    setClaimantEmail(user?.email || '');
+    setClaimantPhone(user?.phoneNumber || '');
+    setBusinessRegNumber('');
+    setClaimDocType('OWNERSHIP_PROOF');
+    setClaimFile(null);
     setClaimError(null);
     setIsClaimModalOpen(true);
   };
@@ -228,18 +258,42 @@ export const GarageDetailPage: React.FC = () => {
     if (!garage || claimSubmitting) return;
 
     if (!claimMessage.trim()) {
-      setClaimError('Please provide proof or reason for your ownership claim.');
+      setClaimError('Please provide an ownership statement explaining your legal or operational relationship to this workshop.');
+      return;
+    }
+    if (!claimFile) {
+      setClaimError('Please select and upload a verification document (e.g. Ownership Deed, Electricity/Utility Bill, Trade License, or GST Certificate).');
+      return;
+    }
+    const allowedExtensions = ['.pdf', '.png', '.jpg', '.jpeg'];
+    const fileName = claimFile.name.toLowerCase();
+    const isAllowedExt = allowedExtensions.some((ext) => fileName.endsWith(ext));
+    if (!isAllowedExt) {
+      setClaimError('Invalid file type. Only PDF, JPEG, and PNG documents are accepted for ownership verification.');
+      return;
+    }
+    const MAX_SIZE = 10 * 1024 * 1024; // 10MB
+    if (claimFile.size > MAX_SIZE) {
+      setClaimError('File exceeds the maximum allowed size of 10 MB. Please upload a smaller document.');
       return;
     }
 
     try {
       setClaimSubmitting(true);
       setClaimError(null);
-      await api.claims.submit(garage.id, claimMessage.trim());
+      await api.claims.submit(garage.id, {
+        claimMessage: claimMessage.trim(),
+        claimantName: claimantName.trim() || undefined,
+        claimantPhone: claimantPhone.trim() || undefined,
+        claimantEmail: claimantEmail.trim() || undefined,
+        businessRegNumber: businessRegNumber.trim() || undefined,
+        documentTypes: [claimDocType],
+        documents: [claimFile],
+      });
       setIsClaimModalOpen(false);
-      setActionSuccess('Your ownership claim has been submitted to administrators for verification.');
+      setActionSuccess('Your ownership claim and verification document have been submitted to administrators for verification. Track review status in My Claims.');
     } catch (err: any) {
-      setClaimError(err.message || 'Failed to submit claim.');
+      setClaimError(err.message || 'Failed to submit ownership claim.');
     } finally {
       setClaimSubmitting(false);
     }
@@ -584,7 +638,7 @@ export const GarageDetailPage: React.FC = () => {
           <div className="card p-6" id="reviews-section">
             <div className="flex-between items-center mb-6">
               <div>
-                <h3 className="text-lg font-bold text-white">Motorist Reviews</h3>
+                <h3 className="text-lg font-bold text-white">Customer Reviews</h3>
                 <p className="text-xs text-secondary mt-0.5">
                   Audited customer ratings from verified vehicle owners
                 </p>
@@ -1070,19 +1124,125 @@ export const GarageDetailPage: React.FC = () => {
       >
         <form onSubmit={handleClaimSubmit} className="space-y-4">
           {claimError && <Alert type="error" message={claimError} className="mb-3" />}
-          <p className="text-xs text-secondary leading-relaxed">
-            Please provide your business role, official workshop contact details, and any trade registration references to expedite verification by administrators.
-          </p>
+
+          <div className="bg-elevated p-3 rounded-lg border border-border text-xs text-secondary leading-relaxed">
+            <strong className="text-white block mb-1">Ownership Verification Process</strong>
+            Submitting a claim requires verifiable proof of business authorization. MeriGarage administrators inspect all business documents before transferring workshop ownership. Proof files remain strictly private and will never be shared publicly.
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="form-group">
+              <label className="form-label" htmlFor="claimant-name">
+                Claimant Name *
+              </label>
+              <input
+                id="claimant-name"
+                type="text"
+                required
+                placeholder="Full Legal Name"
+                className="form-control"
+                value={claimantName}
+                onChange={(e) => setClaimantName(e.target.value)}
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" htmlFor="claimant-phone">
+                Contact Phone Number *
+              </label>
+              <input
+                id="claimant-phone"
+                type="tel"
+                required
+                placeholder="+91 98765 43210"
+                className="form-control"
+                value={claimantPhone}
+                onChange={(e) => setClaimantPhone(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="form-group">
+              <label className="form-label" htmlFor="claimant-email">
+                Claimant Account Email
+              </label>
+              <input
+                id="claimant-email"
+                type="email"
+                readOnly
+                className="form-control opacity-70 cursor-not-allowed"
+                value={claimantEmail}
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" htmlFor="business-reg">
+                Trade / Registration No. (Optional)
+              </label>
+              <input
+                id="business-reg"
+                type="text"
+                placeholder="GSTIN, Shop Act, or Udyam Reg #"
+                className="form-control"
+                value={businessRegNumber}
+                onChange={(e) => setBusinessRegNumber(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="form-group">
+              <label className="form-label" htmlFor="claim-doc-type">
+                Document Type *
+              </label>
+              <select
+                id="claim-doc-type"
+                className="form-control"
+                value={claimDocType}
+                onChange={(e) => setClaimDocType(e.target.value as DocumentType)}
+              >
+                <option value="OWNERSHIP_PROOF">Proof of Ownership / Lease / Utility Bill</option>
+                <option value="TRADE_LICENSE">Trade / Municipal License</option>
+                <option value="GST_CERTIFICATE">GST Registration Certificate</option>
+                <option value="ID_PROOF">Authorized Signatory Government ID</option>
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" htmlFor="claim-doc-file">
+                Upload Verification Document *
+              </label>
+              <input
+                id="claim-doc-file"
+                type="file"
+                required
+                accept=".pdf,.png,.jpg,.jpeg"
+                className="form-control file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-surface file:text-white"
+                onChange={(e) => {
+                  const files = e.target.files;
+                  if (files && files.length > 0) {
+                    setClaimFile(files[0]);
+                  } else {
+                    setClaimFile(null);
+                  }
+                }}
+              />
+              <span className="text-2xs text-muted mt-1 block">
+                Allowed formats: PDF, JPEG, PNG (Max 10 MB).
+              </span>
+            </div>
+          </div>
 
           <div className="form-group">
             <label className="form-label" htmlFor="claim-msg">
-              Claim Message & Proof of Ownership *
+              Ownership Statement & Authorisation Rationale *
             </label>
             <textarea
               id="claim-msg"
-              rows={5}
+              rows={4}
               required
-              placeholder="I am the managing director/owner of this workshop. Trade license number: ... Please link this profile to my account."
+              placeholder="State your role (e.g. Managing Partner, Proprietor) and explain your relationship to this workshop."
               className="form-control"
               value={claimMessage}
               onChange={(e) => setClaimMessage(e.target.value)}
@@ -1102,7 +1262,7 @@ export const GarageDetailPage: React.FC = () => {
               className="btn btn-primary"
               disabled={claimSubmitting}
             >
-              {claimSubmitting ? 'Submitting Claim...' : 'Submit Claim'}
+              {claimSubmitting ? 'Submitting Claim...' : 'Submit Claim & Documents'}
             </button>
           </div>
         </form>

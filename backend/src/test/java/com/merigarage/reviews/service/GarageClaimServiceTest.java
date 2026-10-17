@@ -2,18 +2,26 @@ package com.merigarage.reviews.service;
 
 import com.merigarage.reviews.domain.Garage;
 import com.merigarage.reviews.domain.GarageClaim;
+import com.merigarage.reviews.domain.GarageDocument;
+import com.merigarage.reviews.domain.Role;
 import com.merigarage.reviews.domain.User;
 import com.merigarage.reviews.domain.UserRole;
 import com.merigarage.reviews.domain.enums.ClaimStatus;
+import com.merigarage.reviews.domain.enums.DocumentType;
+import com.merigarage.reviews.domain.enums.DocumentVerificationStatus;
 import com.merigarage.reviews.domain.enums.RoleName;
 import com.merigarage.reviews.exception.DuplicateResourceException;
+import com.merigarage.reviews.exception.ForbiddenOperationException;
 import com.merigarage.reviews.exception.InvalidOperationException;
+import com.merigarage.reviews.repository.GarageDocumentRepository;
+import com.merigarage.reviews.repository.RoleRepository;
 import com.merigarage.reviews.repository.UserRoleRepository;
 import com.merigarage.reviews.service.dto.CreateGarageRequest;
 import com.merigarage.reviews.service.dto.RegisterUserRequest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -40,14 +48,25 @@ class GarageClaimServiceTest {
     @Autowired
     private UserRoleRepository userRoleRepository;
 
-    private User createTestUser(String prefix) {
+    @Autowired
+    private RoleRepository roleRepository;
+
+    @Autowired
+    private GarageDocumentRepository documentRepository;
+
+    private User createTestUser(String prefix, RoleName role) {
         String uid = UUID.randomUUID().toString().substring(0, 8);
-        return userService.registerUser(new RegisterUserRequest(
+        User user = userService.registerUser(new RegisterUserRequest(
                 prefix + "." + uid + "@example.com",
                 "Password123!",
                 prefix + " User",
                 "9876543210"
         ));
+        if (role == RoleName.ROLE_ADMIN) {
+            Role adminRole = roleRepository.findByName(RoleName.ROLE_ADMIN).orElseThrow();
+            userRoleRepository.save(new UserRole(user, adminRole));
+        }
+        return user;
     }
 
     private Garage createTestGarage(User creator) {
@@ -67,10 +86,19 @@ class GarageClaimServiceTest {
         ), creator);
     }
 
+    private MockMultipartFile createSamplePdf(String name) {
+        return new MockMultipartFile(
+                "documents",
+                name,
+                "application/pdf",
+                "Sample PDF content for proof of ownership".getBytes()
+        );
+    }
+
     @Test
     void submitClaim_PreventsDuplicatePendingClaimsBySameUser() {
-        User creator = createTestUser("creator");
-        User claimant = createTestUser("claimant");
+        User creator = createTestUser("creator", RoleName.ROLE_USER);
+        User claimant = createTestUser("claimant", RoleName.ROLE_USER);
         Garage garage = createTestGarage(creator);
 
         GarageClaim firstClaim = claimService.submitClaim(garage.getId(), "I am the real owner", claimant);
@@ -83,21 +111,78 @@ class GarageClaimServiceTest {
     }
 
     @Test
-    void approveClaim_AssignsOwner_ApprovesClaim_AndGrantsGarageOwnerRole() {
-        User creator = createTestUser("creator");
-        User claimant = createTestUser("claimant");
-        User admin = createTestUser("admin");
+    void approveClaim_FailsWhenNoDocumentsAttached() {
+        User creator = createTestUser("creator", RoleName.ROLE_USER);
+        User claimant = createTestUser("claimant", RoleName.ROLE_USER);
+        User admin = createTestUser("admin", RoleName.ROLE_ADMIN);
         Garage garage = createTestGarage(creator);
 
-        GarageClaim claim = claimService.submitClaim(garage.getId(), "Providing tax documents", claimant);
+        GarageClaim claim = claimService.submitClaim(garage.getId(), "Claim with no documents", claimant);
+
+        assertThatThrownBy(() -> claimService.approveClaim(claim.getId(), admin, "Approving without docs"))
+                .isInstanceOf(InvalidOperationException.class)
+                .hasMessageContaining("At least one verified proof of ownership document is required");
+    }
+
+    @Test
+    void approveClaim_FailsWhenDocumentsAreNotVerified() {
+        User creator = createTestUser("creator", RoleName.ROLE_USER);
+        User claimant = createTestUser("claimant", RoleName.ROLE_USER);
+        User admin = createTestUser("admin", RoleName.ROLE_ADMIN);
+        Garage garage = createTestGarage(creator);
+
+        MockMultipartFile file = createSamplePdf("shop-license.pdf");
+        GarageClaim claim = claimService.submitClaimWithDocuments(
+                garage.getId(),
+                "Claim with document",
+                "Proprietor",
+                "9876543210",
+                "claimant@test.com",
+                "REG-999",
+                List.of(file),
+                List.of(DocumentType.OWNERSHIP_PROOF),
+                claimant
+        );
+
+        // Document is PENDING verification
+        assertThatThrownBy(() -> claimService.approveClaim(claim.getId(), admin, "Premature approval"))
+                .isInstanceOf(InvalidOperationException.class)
+                .hasMessageContaining("All attached verification documents must be reviewed and marked VERIFIED first");
+    }
+
+    @Test
+    void approveClaim_SucceedsWhenDocumentsVerified_AssignsOwner_AndGrantsRole() {
+        User creator = createTestUser("creator", RoleName.ROLE_USER);
+        User claimant = createTestUser("claimant", RoleName.ROLE_USER);
+        User admin = createTestUser("admin", RoleName.ROLE_ADMIN);
+        Garage garage = createTestGarage(creator);
+
+        MockMultipartFile file = createSamplePdf("ownership-deed.pdf");
+        GarageClaim claim = claimService.submitClaimWithDocuments(
+                garage.getId(),
+                "Verified ownership submission",
+                "Managing Director",
+                "9876543210",
+                "claimant@test.com",
+                "DL-TRADE-001",
+                List.of(file),
+                List.of(DocumentType.OWNERSHIP_PROOF),
+                claimant
+        );
+
+        List<GarageDocument> docs = documentRepository.findByClaimId(claim.getId());
+        assertThat(docs).hasSize(1);
+        GarageDocument doc = docs.get(0);
+
+        // Admin marks document VERIFIED
+        claimService.reviewClaimDocument(claim.getId(), doc.getId(), DocumentVerificationStatus.VERIFIED, null, admin);
 
         // Verify claimant does not have ROLE_GARAGE_OWNER yet
         List<UserRole> rolesBefore = userRoleRepository.findByUserId(claimant.getId());
         assertThat(rolesBefore).noneMatch(ur -> ur.getRole().getName() == RoleName.ROLE_GARAGE_OWNER);
 
-        // Admin approves claim
-        GarageClaim approvedClaim = claimService.approveClaim(claim.getId(), admin, "Verified documents");
-
+        // Admin approves claim atomically
+        GarageClaim approvedClaim = claimService.approveClaim(claim.getId(), admin, "All trade documents verified");
         assertThat(approvedClaim.getClaimStatus()).isEqualTo(ClaimStatus.APPROVED);
 
         // Garage now has owner assigned
@@ -111,20 +196,86 @@ class GarageClaimServiceTest {
     }
 
     @Test
-    void submitClaim_ThrowsWhenGarageAlreadyHasOwner() {
-        User creator = createTestUser("creator");
-        User claimant1 = createTestUser("claimant1");
-        User claimant2 = createTestUser("claimant2");
-        User admin = createTestUser("admin");
+    void approveClaim_AtomicallySupersedesCompetingClaimsForSameGarage() {
+        User creator = createTestUser("creator", RoleName.ROLE_USER);
+        User claimant1 = createTestUser("claimant1", RoleName.ROLE_USER);
+        User claimant2 = createTestUser("claimant2", RoleName.ROLE_USER);
+        User admin = createTestUser("admin", RoleName.ROLE_ADMIN);
         Garage garage = createTestGarage(creator);
 
-        // First user claims and gets approved
-        GarageClaim claim1 = claimService.submitClaim(garage.getId(), "First owner", claimant1);
+        // Claimant 1 submits with verified document
+        MockMultipartFile file1 = createSamplePdf("c1-proof.pdf");
+        GarageClaim claim1 = claimService.submitClaimWithDocuments(
+                garage.getId(), "Claimant 1", "Owner One", null, null, null,
+                List.of(file1), List.of(DocumentType.OWNERSHIP_PROOF), claimant1
+        );
+        GarageDocument doc1 = documentRepository.findByClaimId(claim1.getId()).get(0);
+        claimService.reviewClaimDocument(claim1.getId(), doc1.getId(), DocumentVerificationStatus.VERIFIED, null, admin);
+
+        // Claimant 2 submits competing claim
+        MockMultipartFile file2 = createSamplePdf("c2-proof.pdf");
+        GarageClaim claim2 = claimService.submitClaimWithDocuments(
+                garage.getId(), "Claimant 2 competing", "Owner Two", null, null, null,
+                List.of(file2), List.of(DocumentType.OWNERSHIP_PROOF), claimant2
+        );
+
+        // Admin approves Claimant 1
+        claimService.approveClaim(claim1.getId(), admin, "Verified legitimate proprietor");
+
+        // Claimant 2's competing claim must now be REJECTED automatically with superseded note
+        GarageClaim reloadedClaim2 = claimService.getClaimById(claim2.getId());
+        assertThat(reloadedClaim2.getClaimStatus()).isEqualTo(ClaimStatus.REJECTED);
+        assertThat(reloadedClaim2.getDecisionNotes()).contains("Superseded");
+    }
+
+    @Test
+    void submitClaim_ThrowsWhenGarageAlreadyHasOwner() {
+        User creator = createTestUser("creator", RoleName.ROLE_USER);
+        User claimant1 = createTestUser("claimant1", RoleName.ROLE_USER);
+        User claimant2 = createTestUser("claimant2", RoleName.ROLE_USER);
+        User admin = createTestUser("admin", RoleName.ROLE_ADMIN);
+        Garage garage = createTestGarage(creator);
+
+        // First user claims with verified doc
+        MockMultipartFile file = createSamplePdf("doc.pdf");
+        GarageClaim claim1 = claimService.submitClaimWithDocuments(
+                garage.getId(), "First owner", "Owner 1", null, null, null,
+                List.of(file), List.of(DocumentType.OWNERSHIP_PROOF), claimant1
+        );
+        GarageDocument doc = documentRepository.findByClaimId(claim1.getId()).get(0);
+        claimService.reviewClaimDocument(claim1.getId(), doc.getId(), DocumentVerificationStatus.VERIFIED, null, admin);
         claimService.approveClaim(claim1.getId(), admin, "Approved");
 
         // Second user tries to claim already owned garage
         assertThatThrownBy(() -> claimService.submitClaim(garage.getId(), "Second claim attempt", claimant2))
                 .isInstanceOf(InvalidOperationException.class)
                 .hasMessageContaining("already has an assigned owner");
+    }
+
+    @Test
+    void loadClaimDocumentResource_RestrictsAccessToUnauthorizedUsers() {
+        User creator = createTestUser("creator", RoleName.ROLE_USER);
+        User claimant = createTestUser("claimant", RoleName.ROLE_USER);
+        User bystander = createTestUser("bystander", RoleName.ROLE_USER);
+        User admin = createTestUser("admin", RoleName.ROLE_ADMIN);
+        Garage garage = createTestGarage(creator);
+
+        MockMultipartFile file = createSamplePdf("private-license.pdf");
+        GarageClaim claim = claimService.submitClaimWithDocuments(
+                garage.getId(), "Private proof", "Claimant", null, null, null,
+                List.of(file), List.of(DocumentType.TRADE_LICENSE), claimant
+        );
+        GarageDocument doc = documentRepository.findByClaimId(claim.getId()).get(0);
+
+        // Claimant can access their own document
+        assertThat(claimService.loadClaimDocumentResource(claim.getId(), doc.getId(), claimant)).isNotNull();
+
+        // Admin can access document
+        assertThat(claimService.loadClaimDocumentResource(claim.getId(), doc.getId(), admin)).isNotNull();
+
+        // Unrelated bystander receives ForbiddenOperationException
+        assertThatThrownBy(() -> claimService.loadClaimDocumentResource(claim.getId(), doc.getId(), bystander))
+                .isInstanceOf(ForbiddenOperationException.class)
+                .hasMessageContaining("not authorized to view");
     }
 }

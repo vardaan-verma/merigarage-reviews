@@ -31,13 +31,16 @@ public class GarageService {
     private final GarageRepository garageRepository;
     private final GarageApprovalAuditRepository auditRepository;
     private final ServiceCatalogueService serviceCatalogueService;
+    private final AuditTrailService auditTrailService;
 
     public GarageService(GarageRepository garageRepository,
                          GarageApprovalAuditRepository auditRepository,
-                         ServiceCatalogueService serviceCatalogueService) {
+                         ServiceCatalogueService serviceCatalogueService,
+                         AuditTrailService auditTrailService) {
         this.garageRepository = garageRepository;
         this.auditRepository = auditRepository;
         this.serviceCatalogueService = serviceCatalogueService;
+        this.auditTrailService = auditTrailService;
     }
 
     @Transactional
@@ -128,6 +131,11 @@ public class GarageService {
         audit.setDecisionNotes(decisionNotes);
         auditRepository.save(audit);
 
+        if (auditTrailService != null) {
+            auditTrailService.recordAction(adminUser, "GARAGE_APPROVAL", "GARAGE", savedGarage.getId(),
+                    "APPROVED", decisionNotes, "{\"previousStatus\":\"" + prevStatus + "\",\"newStatus\":\"APPROVED\"}");
+        }
+
         return savedGarage;
     }
 
@@ -156,6 +164,11 @@ public class GarageService {
         audit.setDecisionNotes(rejectionReason);
         auditRepository.save(audit);
 
+        if (auditTrailService != null) {
+            auditTrailService.recordAction(adminUser, "GARAGE_REJECTION", "GARAGE", savedGarage.getId(),
+                    "REJECTED", rejectionReason, "{\"previousStatus\":\"" + prevStatus + "\",\"newStatus\":\"REJECTED\"}");
+        }
+
         return savedGarage;
     }
 
@@ -183,6 +196,11 @@ public class GarageService {
         );
         audit.setDecisionNotes(suspensionReason);
         auditRepository.save(audit);
+
+        if (auditTrailService != null) {
+            auditTrailService.recordAction(adminUser, "GARAGE_SUSPENSION", "GARAGE", savedGarage.getId(),
+                    "SUSPENDED", suspensionReason, "{\"previousStatus\":\"" + prevStatus + "\",\"newStatus\":\"SUSPENDED\"}");
+        }
 
         return savedGarage;
     }
@@ -216,6 +234,11 @@ public class GarageService {
         audit.setDecisionNotes(notes);
         auditRepository.save(audit);
 
+        if (auditTrailService != null) {
+            auditTrailService.recordAction(adminUser, verified ? "GARAGE_VERIFIED_STATUS_GRANTED" : "GARAGE_VERIFIED_STATUS_REVOKED",
+                    "GARAGE", savedGarage.getId(), verified ? "VERIFIED" : "UNVERIFIED", notes, "{\"isVerified\":" + verified + "}");
+        }
+
         return savedGarage;
     }
 
@@ -248,19 +271,25 @@ public class GarageService {
 
     public org.springframework.data.domain.Page<Garage> findPublicApprovedGarages(
             String city,
+            String state,
             Boolean isVerified,
             Integer serviceId,
             String serviceSlug,
+            String search,
             org.springframework.data.domain.Pageable pageable
     ) {
         String trimmedCity = (city != null && !city.isBlank()) ? city.trim() : null;
+        String trimmedState = (state != null && !state.isBlank()) ? state.trim() : null;
         String trimmedSlug = (serviceSlug != null && !serviceSlug.isBlank()) ? serviceSlug.trim() : null;
+        String trimmedSearch = (search != null && !search.isBlank()) ? search.trim() : null;
         return garageRepository.findApprovedWithFilters(
                 GarageApprovalStatus.APPROVED,
                 trimmedCity,
+                trimmedState,
                 isVerified,
                 serviceId,
                 trimmedSlug,
+                trimmedSearch,
                 pageable
         );
     }
@@ -268,9 +297,19 @@ public class GarageService {
     public org.springframework.data.domain.Page<Garage> findPublicApprovedGarages(
             String city,
             Boolean isVerified,
+            Integer serviceId,
+            String serviceSlug,
             org.springframework.data.domain.Pageable pageable
     ) {
-        return findPublicApprovedGarages(city, isVerified, null, null, pageable);
+        return findPublicApprovedGarages(city, null, isVerified, serviceId, serviceSlug, null, pageable);
+    }
+
+    public org.springframework.data.domain.Page<Garage> findPublicApprovedGarages(
+            String city,
+            Boolean isVerified,
+            org.springframework.data.domain.Pageable pageable
+    ) {
+        return findPublicApprovedGarages(city, null, isVerified, null, null, null, pageable);
     }
 
     public List<Garage> findPublicApprovedGaragesByCity(String city) {

@@ -28,13 +28,16 @@ public class ReviewService {
     private final ReviewRepository reviewRepository;
     private final ReviewResponseRepository responseRepository;
     private final GarageRepository garageRepository;
+    private final AuditTrailService auditTrailService;
 
     public ReviewService(ReviewRepository reviewRepository,
                          ReviewResponseRepository responseRepository,
-                         GarageRepository garageRepository) {
+                         GarageRepository garageRepository,
+                         AuditTrailService auditTrailService) {
         this.reviewRepository = reviewRepository;
         this.responseRepository = responseRepository;
         this.garageRepository = garageRepository;
+        this.auditTrailService = auditTrailService;
     }
 
     @Transactional

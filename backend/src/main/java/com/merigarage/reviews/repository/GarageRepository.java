@@ -49,6 +49,14 @@ public interface GarageRepository extends JpaRepository<Garage, Long> {
     @Query("SELECT DISTINCT g FROM Garage g WHERE g.owner.id = :userId OR (g.owner IS NULL AND g.createdBy.id = :userId)")
     List<Garage> findByOwnerOrCreator(@Param("userId") Long userId);
 
+    long countByApprovalStatus(GarageApprovalStatus approvalStatus);
+
+    long countByIsVerifiedTrue();
+
+    long countByOwnerIsNotNull();
+
+    long countByCreatedAtAfter(java.time.LocalDateTime after);
+
     @Query(
             value = """
                 SELECT DISTINCT g FROM Garage g
@@ -56,9 +64,11 @@ public interface GarageRepository extends JpaRepository<Garage, Long> {
                 LEFT JOIN gs.service s ON s.isActive = true
                 WHERE g.approvalStatus = :approvalStatus
                   AND (:city IS NULL OR LOWER(g.city) = LOWER(:city))
+                  AND (:state IS NULL OR LOWER(g.state) = LOWER(:state))
                   AND (:isVerified IS NULL OR g.isVerified = :isVerified)
                   AND (:serviceId IS NULL OR (gs.service.id = :serviceId AND gs.isAvailable = true AND s.isActive = true))
                   AND (:serviceSlug IS NULL OR (s.slug = :serviceSlug AND gs.isAvailable = true AND s.isActive = true))
+                  AND (:search IS NULL OR LOWER(g.name) LIKE LOWER(CONCAT('%', :search, '%')) OR LOWER(g.description) LIKE LOWER(CONCAT('%', :search, '%')))
             """,
             countQuery = """
                 SELECT COUNT(DISTINCT g) FROM Garage g
@@ -66,17 +76,56 @@ public interface GarageRepository extends JpaRepository<Garage, Long> {
                 LEFT JOIN gs.service s ON s.isActive = true
                 WHERE g.approvalStatus = :approvalStatus
                   AND (:city IS NULL OR LOWER(g.city) = LOWER(:city))
+                  AND (:state IS NULL OR LOWER(g.state) = LOWER(:state))
                   AND (:isVerified IS NULL OR g.isVerified = :isVerified)
                   AND (:serviceId IS NULL OR (gs.service.id = :serviceId AND gs.isAvailable = true AND s.isActive = true))
                   AND (:serviceSlug IS NULL OR (s.slug = :serviceSlug AND gs.isAvailable = true AND s.isActive = true))
+                  AND (:search IS NULL OR LOWER(g.name) LIKE LOWER(CONCAT('%', :search, '%')) OR LOWER(g.description) LIKE LOWER(CONCAT('%', :search, '%')))
             """
     )
     org.springframework.data.domain.Page<Garage> findApprovedWithFilters(
             @Param("approvalStatus") GarageApprovalStatus approvalStatus,
             @Param("city") String city,
+            @Param("state") String state,
             @Param("isVerified") Boolean isVerified,
             @Param("serviceId") Integer serviceId,
             @Param("serviceSlug") String serviceSlug,
+            @Param("search") String search,
+            org.springframework.data.domain.Pageable pageable
+    );
+
+    @Query(
+            value = """
+                SELECT DISTINCT g FROM Garage g
+                LEFT JOIN FETCH g.owner o
+                LEFT JOIN FETCH g.createdBy cb
+                WHERE (:approvalStatus IS NULL OR g.approvalStatus = :approvalStatus)
+                  AND (:isVerified IS NULL OR g.isVerified = :isVerified)
+                  AND (:city IS NULL OR LOWER(g.city) = LOWER(:city))
+                  AND (:state IS NULL OR LOWER(g.state) = LOWER(:state))
+                  AND (:search IS NULL OR LOWER(g.name) LIKE LOWER(CONCAT('%', :search, '%'))
+                       OR LOWER(g.city) LIKE LOWER(CONCAT('%', :search, '%'))
+                       OR LOWER(g.state) LIKE LOWER(CONCAT('%', :search, '%'))
+                       OR LOWER(g.slug) LIKE LOWER(CONCAT('%', :search, '%')))
+            """,
+            countQuery = """
+                SELECT COUNT(g) FROM Garage g
+                WHERE (:approvalStatus IS NULL OR g.approvalStatus = :approvalStatus)
+                  AND (:isVerified IS NULL OR g.isVerified = :isVerified)
+                  AND (:city IS NULL OR LOWER(g.city) = LOWER(:city))
+                  AND (:state IS NULL OR LOWER(g.state) = LOWER(:state))
+                  AND (:search IS NULL OR LOWER(g.name) LIKE LOWER(CONCAT('%', :search, '%'))
+                       OR LOWER(g.city) LIKE LOWER(CONCAT('%', :search, '%'))
+                       OR LOWER(g.state) LIKE LOWER(CONCAT('%', :search, '%'))
+                       OR LOWER(g.slug) LIKE LOWER(CONCAT('%', :search, '%')))
+            """
+    )
+    org.springframework.data.domain.Page<Garage> searchGaragesForAdmin(
+            @Param("approvalStatus") GarageApprovalStatus approvalStatus,
+            @Param("isVerified") Boolean isVerified,
+            @Param("city") String city,
+            @Param("state") String state,
+            @Param("search") String search,
             org.springframework.data.domain.Pageable pageable
     );
 }

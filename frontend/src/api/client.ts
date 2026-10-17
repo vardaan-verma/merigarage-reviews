@@ -21,8 +21,22 @@ import type {
   ReviewResponseDto,
   ServiceCategory,
   ServiceDto,
+  SubmitClaimData,
   UpdateReviewRequest,
   UserDto,
+  TrackLeadEventRequest,
+  TrackLeadEventResponse,
+  LeadEventDto,
+  AdminOverviewMetricsDto,
+  AdminUserSummaryDto,
+  AdminUserDetailDto,
+  UpdateUserStatusRequest,
+  AdminGarageDetailDto,
+  AdminQuoteSummaryDto,
+  AdminQuoteStatusUpdateRequest,
+  ManageRoleRequest,
+  ManagePermissionRequest,
+  AdminAuditLogDto,
 } from './types';
 
 export const API_BASE_URL =
@@ -190,6 +204,8 @@ export const api = {
       password: string;
       fullName: string;
       phoneNumber?: string;
+      registrationSource?: string;
+      consentStatus?: string;
     }): Promise<UserDto> =>
       request<UserDto>('/api/auth/register', {
         method: 'POST',
@@ -213,9 +229,11 @@ export const api = {
   garages: {
     list: (params?: {
       city?: string;
+      state?: string;
       isVerified?: boolean;
       serviceId?: number;
       serviceSlug?: string;
+      search?: string;
       page?: number;
       size?: number;
       sortBy?: string;
@@ -223,9 +241,11 @@ export const api = {
     }): Promise<PagedResponse<GarageSummaryDto>> => {
       const sp = new URLSearchParams();
       if (params?.city) sp.set('city', params.city);
+      if (params?.state) sp.set('state', params.state);
       if (params?.isVerified !== undefined) sp.set('isVerified', String(params.isVerified));
       if (params?.serviceId !== undefined) sp.set('serviceId', String(params.serviceId));
       if (params?.serviceSlug) sp.set('serviceSlug', params.serviceSlug);
+      if (params?.search) sp.set('search', params.search);
       if (params?.page !== undefined) sp.set('page', String(params.page));
       if (params?.size !== undefined) sp.set('size', String(params.size));
       if (params?.sortBy) sp.set('sortBy', params.sortBy);
@@ -329,14 +349,66 @@ export const api = {
 
   // Claims
   claims: {
-    submit: (garageId: number, claimMessage: string): Promise<GarageClaimDto> =>
-      request<GarageClaimDto>(`/api/garages/${garageId}/claims`, {
+    submit: (
+      garageId: number,
+      data: string | FormData | SubmitClaimData
+    ): Promise<GarageClaimDto> => {
+      if (typeof data === 'string') {
+        return request<GarageClaimDto>(`/api/garages/${garageId}/claims`, {
+          method: 'POST',
+          json: { claimMessage: data },
+        });
+      }
+      if (data instanceof FormData) {
+        return request<GarageClaimDto>(`/api/garages/${garageId}/claims`, {
+          method: 'POST',
+          body: data,
+        });
+      }
+      const formData = new FormData();
+      formData.append('claimMessage', data.claimMessage);
+      if (data.claimantName) formData.append('claimantName', data.claimantName);
+      if (data.claimantPhone) formData.append('claimantPhone', data.claimantPhone);
+      if (data.claimantEmail) formData.append('claimantEmail', data.claimantEmail);
+      if (data.businessRegNumber) formData.append('businessRegNumber', data.businessRegNumber);
+      if (data.documents && data.documents.length > 0) {
+        data.documents.forEach((file, index) => {
+          formData.append('documents', file);
+          const docType = data.documentTypes?.[index] || 'OWNERSHIP_PROOF';
+          formData.append('documentTypes', docType);
+        });
+      }
+      return request<GarageClaimDto>(`/api/garages/${garageId}/claims`, {
         method: 'POST',
-        json: { claimMessage },
-      }),
+        body: formData,
+      });
+    },
 
     getMyClaims: (): Promise<GarageClaimDto[]> =>
       request<GarageClaimDto[]>('/api/claims/my-claims'),
+
+    downloadDocumentUrl: (claimId: number, docId: number): string =>
+      `${API_BASE_URL}/api/claims/${claimId}/documents/${docId}/download`,
+
+    downloadDocument: async (claimId: number, docId: number, filename?: string): Promise<void> => {
+      const res = await fetch(`${API_BASE_URL}/api/claims/${claimId}/documents/${docId}/download`, {
+        method: 'GET',
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        throw new ApiError(res.status, 'Failed to fetch claim document', res.statusText);
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      if (filename) a.download = filename;
+      a.target = '_blank';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => window.URL.revokeObjectURL(url), 10000);
+    },
   },
 
   // Reviews
@@ -459,6 +531,9 @@ export const api = {
     getPendingClaims: (): Promise<GarageClaimDto[]> =>
       request<GarageClaimDto[]>('/api/admin/claims'),
 
+    getClaim: (id: number): Promise<GarageClaimDto> =>
+      request<GarageClaimDto>(`/api/admin/claims/${id}`),
+
     approveClaim: (id: number, decisionNotes?: string): Promise<GarageClaimDto> =>
       request<GarageClaimDto>(`/api/admin/claims/${id}/approve`, {
         method: 'POST',
@@ -470,6 +545,46 @@ export const api = {
         method: 'POST',
         json: { decisionNotes },
       }),
+
+    requestClaimResubmission: (id: number, decisionNotes: string): Promise<GarageClaimDto> =>
+      request<GarageClaimDto>(`/api/admin/claims/${id}/request-resubmission`, {
+        method: 'POST',
+        json: { decisionNotes },
+      }),
+
+    reviewClaimDocument: (
+      claimId: number,
+      docId: number,
+      status: DocumentVerificationStatus,
+      rejectionReason?: string
+    ): Promise<GarageDocumentDto> =>
+      request<GarageDocumentDto>(`/api/admin/claims/${claimId}/documents/${docId}/review`, {
+        method: 'POST',
+        json: { status, rejectionReason },
+      }),
+
+    getClaimDocumentDownloadUrl: (claimId: number, docId: number): string =>
+      `${API_BASE_URL}/api/admin/claims/${claimId}/documents/${docId}/download`,
+
+    downloadClaimDocument: async (claimId: number, docId: number, filename?: string): Promise<void> => {
+      const res = await fetch(`${API_BASE_URL}/api/admin/claims/${claimId}/documents/${docId}/download`, {
+        method: 'GET',
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        throw new ApiError(res.status, 'Failed to fetch claim document', res.statusText);
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      if (filename) a.download = filename;
+      a.target = '_blank';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => window.URL.revokeObjectURL(url), 10000);
+    },
 
     // Documents
     getDocumentsForGarage: (garageId: number): Promise<GarageDocumentDto[]> =>
@@ -522,6 +637,146 @@ export const api = {
         method: 'PUT',
         json: data,
       }),
+    // Phase 3 Admin Portal
+    getOverview: (): Promise<AdminOverviewMetricsDto> =>
+      request<AdminOverviewMetricsDto>('/api/admin/overview'),
+
+    searchUsers: (params?: {
+      search?: string;
+      role?: string;
+      status?: string;
+      fromDate?: string;
+      toDate?: string;
+      page?: number;
+      size?: number;
+    }): Promise<PagedResponse<AdminUserSummaryDto>> => {
+      const sp = new URLSearchParams();
+      if (params?.search) sp.set('search', params.search);
+      if (params?.role) sp.set('role', params.role);
+      if (params?.status) sp.set('status', params.status);
+      if (params?.fromDate) sp.set('fromDate', params.fromDate);
+      if (params?.toDate) sp.set('toDate', params.toDate);
+      if (params?.page !== undefined) sp.set('page', String(params.page));
+      if (params?.size !== undefined) sp.set('size', String(params.size));
+      const qs = sp.toString();
+      return request<PagedResponse<AdminUserSummaryDto>>(`/api/admin/users${qs ? `?${qs}` : ''}`);
+    },
+
+    getUserDetail: (id: number): Promise<AdminUserDetailDto> =>
+      request<AdminUserDetailDto>(`/api/admin/users/${id}`),
+
+    updateUserStatus: (id: number, data: UpdateUserStatusRequest): Promise<AdminUserSummaryDto> =>
+      request<AdminUserSummaryDto>(`/api/admin/users/${id}/status`, {
+        method: 'POST',
+        json: data,
+      }),
+
+    searchAllGarages: (params?: {
+      search?: string;
+      status?: string;
+      verified?: boolean;
+      city?: string;
+      state?: string;
+      page?: number;
+      size?: number;
+    }): Promise<PagedResponse<AdminGarageDetailDto>> => {
+      const sp = new URLSearchParams();
+      if (params?.search) sp.set('search', params.search);
+      if (params?.status) sp.set('status', params.status);
+      if (params?.verified !== undefined) sp.set('verified', String(params.verified));
+      if (params?.city) sp.set('city', params.city);
+      if (params?.state) sp.set('state', params.state);
+      if (params?.page !== undefined) sp.set('page', String(params.page));
+      if (params?.size !== undefined) sp.set('size', String(params.size));
+      const qs = sp.toString();
+      return request<PagedResponse<AdminGarageDetailDto>>(`/api/admin/garages/all${qs ? `?${qs}` : ''}`);
+    },
+
+    getGarageDetail: (id: number): Promise<AdminGarageDetailDto> =>
+      request<AdminGarageDetailDto>(`/api/admin/garages/${id}/details`),
+
+    searchQuotes: (params?: {
+      search?: string;
+      status?: string;
+      fromDate?: string;
+      toDate?: string;
+      page?: number;
+      size?: number;
+    }): Promise<PagedResponse<AdminQuoteSummaryDto>> => {
+      const sp = new URLSearchParams();
+      if (params?.search) sp.set('search', params.search);
+      if (params?.status) sp.set('status', params.status);
+      if (params?.fromDate) sp.set('fromDate', params.fromDate);
+      if (params?.toDate) sp.set('toDate', params.toDate);
+      if (params?.page !== undefined) sp.set('page', String(params.page));
+      if (params?.size !== undefined) sp.set('size', String(params.size));
+      const qs = sp.toString();
+      return request<PagedResponse<AdminQuoteSummaryDto>>(`/api/admin/quotes${qs ? `?${qs}` : ''}`);
+    },
+
+    getQuoteDetail: (id: number): Promise<QuoteRequestDto> =>
+      request<QuoteRequestDto>(`/api/admin/quotes/${id}`),
+
+    updateQuoteStatus: (id: number, data: AdminQuoteStatusUpdateRequest): Promise<QuoteRequestDto> =>
+      request<QuoteRequestDto>(`/api/admin/quotes/${id}/status`, {
+        method: 'POST',
+        json: data,
+      }),
+
+    manageUserRole: (id: number, data: ManageRoleRequest): Promise<AdminUserDetailDto> =>
+      request<AdminUserDetailDto>(`/api/admin/users/${id}/roles`, {
+        method: 'POST',
+        json: data,
+      }),
+
+    manageUserPermission: (id: number, data: ManagePermissionRequest): Promise<AdminUserDetailDto> =>
+      request<AdminUserDetailDto>(`/api/admin/users/${id}/permissions`, {
+        method: 'POST',
+        json: data,
+      }),
+
+    searchAuditLogs: (params?: {
+      actionType?: string;
+      targetType?: string;
+      adminUserId?: number;
+      fromDate?: string;
+      toDate?: string;
+      page?: number;
+      size?: number;
+    }): Promise<PagedResponse<AdminAuditLogDto>> => {
+      const sp = new URLSearchParams();
+      if (params?.actionType) sp.set('actionType', params.actionType);
+      if (params?.targetType) sp.set('targetType', params.targetType);
+      if (params?.adminUserId !== undefined) sp.set('adminUserId', String(params.adminUserId));
+      if (params?.fromDate) sp.set('fromDate', params.fromDate);
+      if (params?.toDate) sp.set('toDate', params.toDate);
+      if (params?.page !== undefined) sp.set('page', String(params.page));
+      if (params?.size !== undefined) sp.set('size', String(params.size));
+      const qs = sp.toString();
+      return request<PagedResponse<AdminAuditLogDto>>(`/api/admin/audit-logs${qs ? `?${qs}` : ''}`);
+    },
+
+    getExportUrl: (type: 'users' | 'garages' | 'leads' | 'quotes'): string =>
+      `${API_BASE_URL}/api/admin/export/${type}`,
+
+    downloadExport: async (type: 'users' | 'garages' | 'leads' | 'quotes'): Promise<void> => {
+      const res = await fetch(`${API_BASE_URL}/api/admin/export/${type}`, {
+        method: 'GET',
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        throw new ApiError(res.status, 'Export failed or unauthorized', res.statusText);
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `merigarage_${type}_export.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => window.URL.revokeObjectURL(url), 10000);
+    },
   },
 
   // Quote Requests
@@ -558,6 +813,44 @@ export const api = {
         method: 'POST',
         json: { messageText },
       }),
+  },
+
+  // Persistent Leads & Search Events
+  leads: {
+    track: (event: TrackLeadEventRequest): Promise<TrackLeadEventResponse> =>
+      request<TrackLeadEventResponse>('/api/leads/track', {
+        method: 'POST',
+        json: event,
+      }),
+
+    listAdmin: (params?: {
+      page?: number;
+      size?: number;
+      type?: string;
+      city?: string;
+      state?: string;
+      serviceSlug?: string;
+      source?: string;
+      hasUser?: boolean;
+      search?: string;
+      fromDate?: string;
+      toDate?: string;
+    }): Promise<PagedResponse<LeadEventDto>> => {
+      const sp = new URLSearchParams();
+      if (params?.page !== undefined) sp.set('page', String(params.page));
+      if (params?.size !== undefined) sp.set('size', String(params.size));
+      if (params?.type) sp.set('eventType', params.type);
+      if (params?.city) sp.set('city', params.city);
+      if (params?.state) sp.set('state', params.state);
+      if (params?.serviceSlug) sp.set('serviceSlug', params.serviceSlug);
+      if (params?.source) sp.set('source', params.source);
+      if (params?.hasUser !== undefined) sp.set('hasUser', String(params.hasUser));
+      if (params?.search) sp.set('search', params.search);
+      if (params?.fromDate) sp.set('fromDate', params.fromDate);
+      if (params?.toDate) sp.set('toDate', params.toDate);
+      const qs = sp.toString();
+      return request<PagedResponse<LeadEventDto>>(`/api/admin/leads${qs ? `?${qs}` : ''}`);
+    },
   },
 };
 

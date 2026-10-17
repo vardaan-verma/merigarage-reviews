@@ -27,6 +27,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.context.WebApplicationContext;
 
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -77,6 +78,9 @@ class AdminControllerTest {
 
     @Autowired
     private FileStorageService fileStorageService;
+
+    @Autowired
+    private com.merigarage.reviews.repository.GarageDocumentRepository documentRepository;
 
     private User plainAdmin;
     private User garageApprovalAdmin;
@@ -212,7 +216,15 @@ class AdminControllerTest {
                 "City", "State", "123456", "9876543210", null, null, null, null
         ), creatorUser);
 
-        GarageClaim claim = claimService.submitClaim(garage.getId(), "Proprietor proof", creatorUser);
+        MockMultipartFile sampleDoc = new MockMultipartFile(
+                "files", "trade_license.pdf", "application/pdf", "%PDF-1.4 test".getBytes()
+        );
+        GarageClaim claim = claimService.submitClaimWithDocuments(
+                garage.getId(), "Proprietor proof", null, null, null, "REG123",
+                List.of(sampleDoc), List.of(DocumentType.OWNERSHIP_PROOF), creatorUser
+        );
+        GarageDocument doc = documentRepository.findByClaimId(claim.getId()).get(0);
+        claimService.reviewClaimDocument(claim.getId(), doc.getId(), DocumentVerificationStatus.VERIFIED, "Doc verified", claimAdmin);
 
         MockHttpSession plainAdminSession = login(plainAdmin.getEmail());
         MockHttpSession claimAdminSession = login(claimAdmin.getEmail());

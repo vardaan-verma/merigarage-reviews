@@ -16,7 +16,18 @@ export const LoginPage: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const from = (location.state as any)?.from?.pathname || (roleTab === 'garage' ? '/owner' : '/profile');
+  // Sync role tab from URL search parameters if provided (e.g. ?role=garage)
+  React.useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const roleParam = params.get('role');
+    if (roleParam === 'garage') {
+      setRoleTab('garage');
+    } else if (roleParam === 'customer') {
+      setRoleTab('customer');
+    }
+  }, [location.search]);
+
+  const from = (location.state as any)?.from?.pathname || (roleTab === 'garage' ? '/owner' : '/');
 
   // If already authenticated, redirect
   React.useEffect(() => {
@@ -52,43 +63,42 @@ export const LoginPage: React.FC = () => {
           <div className="flex items-center justify-center gap-2 mb-2">
             <span className="brand-dot"></span>
             <span className="font-extrabold text-xl text-white">MeriGarage</span>
-            <span className="text-primary font-bold text-xl">Reviews</span>
           </div>
           <h1 className="text-2xl font-extrabold text-white">
-            {roleTab === 'customer' ? 'Motorist Sign In' : 'Garage Owner Sign In'}
+            {roleTab === 'customer' ? 'Customer Login' : 'Garage Login'}
           </h1>
           <p className="text-secondary text-xs mt-1">
             {roleTab === 'customer'
-              ? 'Access verified reviews, bookmark garages, and track claims.'
+              ? 'Access verified reviews, bookmark garages, and track quotes.'
               : 'Manage workshop credentials, review responses, and photo galleries.'}
           </p>
         </div>
 
-        {/* Role Segmented Switch Tab (Customer vs Garage) */}
-        <div className="flex bg-[#141313] p-1 rounded-full border border-border mb-6">
+        {/* Customer Login vs Garage Login buttons styled like Navbar buttons */}
+        <div className="flex items-center justify-center gap-3 mb-6">
           <button
             type="button"
             onClick={() => setRoleTab('customer')}
-            className={`flex-1 py-2 px-3 rounded-full text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+            className={`btn btn-sm flex-1 flex items-center justify-center gap-2 py-2.5 px-4 transition-all ${
               roleTab === 'customer'
-                ? 'bg-primary text-white shadow-md'
-                : 'text-secondary hover:text-white'
+                ? 'btn-primary shadow-lg'
+                : 'btn-secondary border border-border'
             }`}
           >
-            <span className="material-symbols-outlined text-sm">directions_car</span>
-            Motorist
+            <span className="material-symbols-outlined text-base">person</span>
+            <span>Customer Login</span>
           </button>
           <button
             type="button"
             onClick={() => setRoleTab('garage')}
-            className={`flex-1 py-2 px-3 rounded-full text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+            className={`btn btn-sm flex-1 flex items-center justify-center gap-2 py-2.5 px-4 transition-all ${
               roleTab === 'garage'
-                ? 'bg-primary text-white shadow-md'
-                : 'text-secondary hover:text-white'
+                ? 'btn-primary shadow-lg'
+                : 'btn-secondary border border-border'
             }`}
           >
-            <span className="material-symbols-outlined text-sm">construction</span>
-            Workshop Hub
+            <span className="material-symbols-outlined text-base">construction</span>
+            <span>Garage Login</span>
           </button>
         </div>
 
@@ -102,7 +112,7 @@ export const LoginPage: React.FC = () => {
         )}
 
         {/* Google OAuth Embed */}
-        <div className="mb-5">
+        <div className="google-auth-wrapper mb-6">
           <GoogleAuthButton
             mode="signin"
             roleTab={roleTab}
@@ -114,7 +124,7 @@ export const LoginPage: React.FC = () => {
           />
         </div>
 
-        <div className="auth-divider mb-5">
+        <div className="auth-divider my-6">
           <span className="auth-divider-line"></span>
           <span className="auth-divider-text">OR CONTINUE WITH PASSWORD</span>
           <span className="auth-divider-line"></span>
@@ -163,7 +173,7 @@ export const LoginPage: React.FC = () => {
                 title={showPassword ? 'Hide password' : 'Show password'}
               >
                 <span className="material-symbols-outlined text-lg">
-                  {showPassword ? 'visibility_off' : 'build'}
+                  {showPassword ? 'visibility_off' : 'visibility'}
                 </span>
               </button>
             </div>
@@ -175,7 +185,7 @@ export const LoginPage: React.FC = () => {
             disabled={submitting}
           >
             <span className="material-symbols-outlined text-base">
-              {roleTab === 'garage' ? 'build' : 'login'}
+              {roleTab === 'garage' ? 'construction' : 'login'}
             </span>
             <span>
               {submitting

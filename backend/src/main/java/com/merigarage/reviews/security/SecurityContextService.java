@@ -29,31 +29,60 @@ public class SecurityContextService {
         return Optional.empty();
     }
 
+    public Optional<User> getCurrentUser() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated()) {
+            return Optional.empty();
+        }
+        if (auth.getPrincipal() instanceof UserPrincipal principal) {
+            return userRepository.findById(principal.getId());
+        }
+        String username = auth.getName();
+        if (username != null && !username.isBlank()) {
+            return userRepository.findByEmail(username);
+        }
+        return Optional.empty();
+    }
+
     public UserPrincipal getRequiredPrincipal() {
         return getCurrentPrincipal()
                 .orElseThrow(() -> new ForbiddenOperationException("Authentication is required for this operation."));
     }
 
     public User getRequiredCurrentUser() {
-        UserPrincipal principal = getRequiredPrincipal();
-        return userRepository.findById(principal.getId())
-                .orElseThrow(() -> new ResourceNotFoundException("Authenticated user not found with id: " + principal.getId()));
+        return getCurrentUser()
+                .orElseThrow(() -> new ResourceNotFoundException("Authenticated user not found."));
     }
 
     public Long getRequiredCurrentUserId() {
-        return getRequiredPrincipal().getId();
+        return getCurrentPrincipal()
+                .map(UserPrincipal::getId)
+                .or(() -> getCurrentUser().map(User::getId))
+                .orElseThrow(() -> new ForbiddenOperationException("Authentication is required for this operation."));
     }
 
     public boolean hasRole(RoleName roleName) {
-        return getCurrentPrincipal()
-                .map(p -> p.hasRole(roleName))
-                .orElse(false);
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated()) {
+            return false;
+        }
+        if (auth.getPrincipal() instanceof UserPrincipal principal) {
+            return principal.hasRole(roleName);
+        }
+        return auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals(roleName.name()) || a.getAuthority().equals("ROLE_" + roleName.name()));
     }
 
     public boolean hasAdminPermission(AdminPermissionCode permissionCode) {
-        return getCurrentPrincipal()
-                .map(p -> p.hasAdminPermission(permissionCode))
-                .orElse(false);
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated()) {
+            return false;
+        }
+        if (auth.getPrincipal() instanceof UserPrincipal principal) {
+            return principal.hasAdminPermission(permissionCode);
+        }
+        return auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals(permissionCode.name()));
     }
 
     public void requireRole(RoleName roleName) {

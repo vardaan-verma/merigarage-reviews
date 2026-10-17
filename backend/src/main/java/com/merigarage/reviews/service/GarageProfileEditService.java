@@ -28,13 +28,16 @@ public class GarageProfileEditService {
     private final GarageProfileEditRepository editRepository;
     private final GarageRepository garageRepository;
     private final GarageApprovalAuditRepository auditRepository;
+    private final AuditTrailService auditTrailService;
 
     public GarageProfileEditService(GarageProfileEditRepository editRepository,
                                     GarageRepository garageRepository,
-                                    GarageApprovalAuditRepository auditRepository) {
+                                    GarageApprovalAuditRepository auditRepository,
+                                    AuditTrailService auditTrailService) {
         this.editRepository = editRepository;
         this.garageRepository = garageRepository;
         this.auditRepository = auditRepository;
+        this.auditTrailService = auditTrailService;
     }
 
     @Transactional
@@ -128,6 +131,11 @@ public class GarageProfileEditService {
         audit.setDecisionNotes(decisionNotes);
         auditRepository.save(audit);
 
+        if (auditTrailService != null) {
+            auditTrailService.recordAction(adminUser, "PROFILE_EDIT_APPROVAL", "GARAGE", savedGarage.getId(),
+                    "APPROVED", decisionNotes, "{\"editId\":" + savedEdit.getId() + "}");
+        }
+
         return savedEdit;
     }
 
@@ -162,6 +170,11 @@ public class GarageProfileEditService {
         audit.setReferenceEdit(savedEdit);
         audit.setDecisionNotes(rejectionReason);
         auditRepository.save(audit);
+
+        if (auditTrailService != null) {
+            auditTrailService.recordAction(adminUser, "PROFILE_EDIT_REJECTION", "GARAGE", edit.getGarage().getId(),
+                    "REJECTED", rejectionReason, "{\"editId\":" + savedEdit.getId() + "}");
+        }
 
         return savedEdit;
     }

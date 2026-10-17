@@ -48,9 +48,11 @@ public class PublicGarageController {
     @GetMapping
     public ResponseEntity<PagedResponse<GarageSummaryDto>> listApprovedGarages(
             @RequestParam(required = false) String city,
+            @RequestParam(required = false) String state,
             @RequestParam(required = false) Boolean isVerified,
             @RequestParam(required = false) Integer serviceId,
             @RequestParam(required = false) String serviceSlug,
+            @RequestParam(required = false) String search,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(defaultValue = "name") String sortBy,
@@ -66,7 +68,7 @@ public class PublicGarageController {
         };
 
         Pageable pageable = PageRequest.of(validatedPage, validatedSize, Sort.by(direction, safeSort));
-        Page<Garage> garagePage = garageService.findPublicApprovedGarages(city, isVerified, serviceId, serviceSlug, pageable);
+        Page<Garage> garagePage = garageService.findPublicApprovedGarages(city, state, isVerified, serviceId, serviceSlug, search, pageable);
 
         List<Long> garageIds = garagePage.getContent().stream().map(Garage::getId).toList();
         java.util.Map<Long, Long> coverPhotoMap = mediaService.getCoverPhotoIdsForGarages(garageIds);

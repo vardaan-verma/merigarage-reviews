@@ -36,4 +36,9 @@ public interface GarageClaimRepository extends JpaRepository<GarageClaim, Long> 
 
     @EntityGraph(attributePaths = {"garage", "claimantUser"})
     List<GarageClaim> findByClaimStatusOrderByCreatedAtDesc(ClaimStatus status);
+
+    @EntityGraph(attributePaths = {"garage", "claimantUser"})
+    List<GarageClaim> findByGarageIdAndClaimStatus(Long garageId, ClaimStatus status);
+
+    long countByClaimStatus(ClaimStatus status);
 }

@@ -63,7 +63,9 @@ public class UserService {
         user.setEmail(normalizedEmail);
         user.setPasswordHash(encodedPassword);
         user.setFullName(request.fullName().trim());
-        user.setPhoneNumber(request.phoneNumber() != null ? request.phoneNumber().trim() : null);
+        user.setPhoneNumber(normalizePhoneNumber(request.phoneNumber()));
+        user.setRegistrationSource(request.registrationSource() != null ? request.registrationSource().trim() : null);
+        user.setConsentStatus(request.consentStatus() != null ? request.consentStatus().trim() : "ESSENTIAL_ONLY");
         user.setStatus(UserStatus.ACTIVE);
 
         User savedUser = userRepository.save(user);
@@ -142,5 +144,20 @@ public class UserService {
             return null;
         }
         return email.trim().toLowerCase(Locale.ROOT);
+    }
+
+    public static String normalizePhoneNumber(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String digits = raw.replaceAll("\\D", "");
+        if (digits.length() == 10) {
+            return "+91" + digits;
+        } else if (digits.length() == 12 && digits.startsWith("91")) {
+            return "+" + digits;
+        } else if (digits.length() > 0 && digits.length() <= 15) {
+            return "+" + digits;
+        }
+        return null;
     }
 }

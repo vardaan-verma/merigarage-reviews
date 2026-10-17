@@ -1,8 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Alert } from '../components/Alert';
 import { GoogleAuthButton } from '../components/GoogleAuthButton';
+import {
+  safeTrackLeadEvent,
+  getActiveSearchSession,
+} from '../utils/searchSession';
 
 export const RegisterPage: React.FC = () => {
   const { register, isAuthenticated } = useAuth();
@@ -14,10 +18,22 @@ export const RegisterPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [marketingConsent, setMarketingConsent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  React.useEffect(() => {
+  // Track distinct event: Visitor begins sign-up
+  useEffect(() => {
+    const session = getActiveSearchSession();
+    safeTrackLeadEvent('SIGNUP_STARTED', {
+      source: session?.source || 'direct_signup',
+      state: session?.state,
+      city: session?.city,
+      serviceSlug: session?.serviceSlug,
+    });
+  }, []);
+
+  useEffect(() => {
     if (isAuthenticated) {
       navigate('/profile', { replace: true });
     }
@@ -41,15 +57,40 @@ export const RegisterPage: React.FC = () => {
       return;
     }
 
+    const cleanPhone = phone.replace(/\D/g, '');
+    if (cleanPhone && cleanPhone.length !== 10) {
+      setErrorMessage('Please enter a valid 10-digit mobile number, or leave it blank.');
+      return;
+    }
+
     try {
       setSubmitting(true);
       setErrorMessage(null);
+
+      const session = getActiveSearchSession();
+      const registrationSource = session?.source || 'landing_page';
+      const consentStatus = marketingConsent ? 'CONSENT_GRANTED' : 'CONSENT_WITHHELD';
+
       await register({
         fullName: fullName.trim(),
         email: email.trim(),
         password,
-        phoneNumber: phone.trim() || undefined,
+        phoneNumber: cleanPhone || undefined,
+        registrationSource,
+        consentStatus,
       });
+
+      // Track distinct event: User successfully registers
+      await safeTrackLeadEvent('USER_REGISTERED', {
+        source: registrationSource,
+        state: session?.state,
+        city: session?.city,
+        serviceSlug: session?.serviceSlug,
+        vehicleType: session?.vehicleType,
+        vehicleMake: session?.vehicleMake,
+        vehicleModel: session?.vehicleModel,
+      });
+
       navigate('/profile');
     } catch (err: any) {
       setErrorMessage(err.message || 'Registration failed. Please verify your details.');
@@ -66,11 +107,10 @@ export const RegisterPage: React.FC = () => {
           <div className="flex items-center justify-center gap-2 mb-2">
             <span className="brand-dot"></span>
             <span className="font-extrabold text-xl text-white">MeriGarage</span>
-            <span className="text-primary font-bold text-xl">Reviews</span>
           </div>
           <h1 className="text-2xl font-extrabold text-white">Create Account</h1>
           <p className="text-secondary text-xs mt-1">
-            Join MeriGarage to write verified motorist reviews or manage your auto workshop.
+            Join MeriGarage to write verified customer reviews or manage your garage.
           </p>
         </div>
 
@@ -84,7 +124,7 @@ export const RegisterPage: React.FC = () => {
         )}
 
         {/* Google OAuth Embed */}
-        <div className="mb-5">
+        <div className="google-auth-wrapper mb-6">
           <GoogleAuthButton
             mode="signup"
             onSuccess={() => {
@@ -95,7 +135,7 @@ export const RegisterPage: React.FC = () => {
           />
         </div>
 
-        <div className="auth-divider mb-5">
+        <div className="auth-divider my-6">
           <span className="auth-divider-line"></span>
           <span className="auth-divider-text">OR REGISTER WITH EMAIL</span>
           <span className="auth-divider-line"></span>
@@ -145,6 +185,9 @@ export const RegisterPage: React.FC = () => {
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
             />
+            <p className="privacy-field-notice" style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: '0.35rem', lineHeight: '1.2' }}>
+              🔒 Used strictly for quote notifications and account verification. Never publicly visible or sold.
+            </p>
           </div>
 
           <div className="form-group">
@@ -186,6 +229,20 @@ export const RegisterPage: React.FC = () => {
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
             />
+          </div>
+
+          <div className="form-group pt-1">
+            <label className="flex items-start gap-2.5 cursor-pointer text-xs text-secondary leading-tight">
+              <input
+                type="checkbox"
+                checked={marketingConsent}
+                onChange={(e) => setMarketingConsent(e.target.checked)}
+                className="mt-0.5 rounded border-border text-primary focus:ring-0"
+              />
+              <span>
+                (Optional) Keep me informed about seasonal car care tips, exclusive service discounts, and platform announcements.
+              </span>
+            </label>
           </div>
 
           <button

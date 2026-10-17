@@ -1001,7 +1001,7 @@ export const OwnerDashboardPage: React.FC = () => {
                                 </span>
                               )}
                               {isUnderReview && (
-                                <span className="badge bg-blue-500/20 text-blue-400 border border-blue-500/40 text-xs font-bold uppercase">
+                                <span className="badge bg-zinc-800 text-zinc-300 border border-zinc-700 text-xs font-bold uppercase">
                                   Under Review
                                 </span>
                               )}

@@ -44,6 +44,9 @@ class ReviewServiceTest {
     @Autowired
     private ReviewRepository reviewRepository;
 
+    @Autowired
+    private com.merigarage.reviews.repository.GarageRepository garageRepository;
+
     private User createTestUser(String prefix) {
         String uid = UUID.randomUUID().toString().substring(0, 8);
         return userService.registerUser(new RegisterUserRequest(
@@ -103,9 +106,9 @@ class ReviewServiceTest {
         User admin = createTestUser("admin");
         Garage garage = createTestGarage(creator);
 
-        // Assign owner via claim
-        var claim = claimService.submitClaim(garage.getId(), "I own this", owner);
-        claimService.approveClaim(claim.getId(), admin, "Verified");
+        // Assign owner
+        garage.setOwner(owner);
+        garageRepository.save(garage);
 
         CreateReviewRequest request = new CreateReviewRequest(
                 (byte) 5, (byte) 5, (byte) 5, (byte) 5,
@@ -199,8 +202,8 @@ class ReviewServiceTest {
         User reviewer = createTestUser("reviewer");
 
         Garage garage = createTestGarage(creator);
-        var claim = claimService.submitClaim(garage.getId(), "Owner claim", owner);
-        claimService.approveClaim(claim.getId(), admin, "Verified");
+        garage.setOwner(owner);
+        garageRepository.save(garage);
 
         Review review = reviewService.createReview(garage.getId(), new CreateReviewRequest(
                 (byte) 4, (byte) 4, (byte) 4, (byte) 4,

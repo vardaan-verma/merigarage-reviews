@@ -12,5 +12,7 @@ public interface UserAdminPermissionRepository extends JpaRepository<UserAdminPe
 
     List<UserAdminPermission> findByUserId(Long userId);
 
+    List<UserAdminPermission> findByUserIdIn(java.util.Collection<Long> userIds);
+
     boolean existsByUserIdAndPermissionId(Long userId, Byte permissionId);
 }

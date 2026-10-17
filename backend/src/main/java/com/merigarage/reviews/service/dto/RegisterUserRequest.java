@@ -8,5 +8,11 @@ public record RegisterUserRequest(
         @NotBlank @Email @Size(max = 255) String email,
         @NotBlank @Size(min = 8, max = 100) String password,
         @NotBlank @Size(max = 100) String fullName,
-        @Size(max = 20) String phoneNumber
-) {}
+        @Size(max = 20) String phoneNumber,
+        @Size(max = 100) String registrationSource,
+        @Size(max = 50) String consentStatus
+) {
+    public RegisterUserRequest(String email, String password, String fullName, String phoneNumber) {
+        this(email, password, fullName, phoneNumber, null, null);
+    }
+}

@@ -28,17 +28,20 @@ public class UserAuthorizationService {
     private final UserRoleRepository userRoleRepository;
     private final AdminPermissionRepository permissionRepository;
     private final UserAdminPermissionRepository userAdminPermissionRepository;
+    private final AuditTrailService auditTrailService;
 
     public UserAuthorizationService(UserRepository userRepository,
                                     RoleRepository roleRepository,
                                     UserRoleRepository userRoleRepository,
                                     AdminPermissionRepository permissionRepository,
-                                    UserAdminPermissionRepository userAdminPermissionRepository) {
+                                    UserAdminPermissionRepository userAdminPermissionRepository,
+                                    AuditTrailService auditTrailService) {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.userRoleRepository = userRoleRepository;
         this.permissionRepository = permissionRepository;
         this.userAdminPermissionRepository = userAdminPermissionRepository;
+        this.auditTrailService = auditTrailService;
     }
 
     public void grantRole(Long targetUserId, RoleName roleName, User callerAdmin) {
@@ -52,6 +55,10 @@ public class UserAuthorizationService {
 
         if (!userRoleRepository.existsByUserIdAndRoleId(targetUserId, role.getId())) {
             userRoleRepository.save(new UserRole(targetUser, role));
+            if (auditTrailService != null) {
+                auditTrailService.recordAction(callerAdmin, "USER_ROLE_ASSIGNMENT", "USER", targetUserId,
+                        "GRANTED", "Role granted: " + roleName.name(), "{\"role\":\"" + roleName.name() + "\"}");
+            }
         }
     }
 
@@ -64,6 +71,10 @@ public class UserAuthorizationService {
         UserRoleId id = new UserRoleId(targetUserId, role.getId());
         if (userRoleRepository.existsById(id)) {
             userRoleRepository.deleteById(id);
+            if (auditTrailService != null) {
+                auditTrailService.recordAction(callerAdmin, "USER_ROLE_REVOCATION", "USER", targetUserId,
+                        "REVOKED", "Role revoked: " + roleName.name(), "{\"role\":\"" + roleName.name() + "\"}");
+            }
         }
     }
 
@@ -78,6 +89,10 @@ public class UserAuthorizationService {
 
         if (!userAdminPermissionRepository.existsByUserIdAndPermissionId(targetUserId, permission.getId())) {
             userAdminPermissionRepository.save(new UserAdminPermission(targetUser, permission, callerAdmin));
+            if (auditTrailService != null) {
+                auditTrailService.recordAction(callerAdmin, "USER_PERMISSION_GRANT", "USER", targetUserId,
+                        "GRANTED", "Permission granted: " + permissionCode.name(), "{\"permission\":\"" + permissionCode.name() + "\"}");
+            }
         }
     }
 
@@ -90,6 +105,10 @@ public class UserAuthorizationService {
         UserAdminPermissionId id = new UserAdminPermissionId(targetUserId, permission.getId());
         if (userAdminPermissionRepository.existsById(id)) {
             userAdminPermissionRepository.deleteById(id);
+            if (auditTrailService != null) {
+                auditTrailService.recordAction(callerAdmin, "USER_PERMISSION_REVOKE", "USER", targetUserId,
+                        "REVOKED", "Permission revoked: " + permissionCode.name(), "{\"permission\":\"" + permissionCode.name() + "\"}");
+            }
         }
     }
 

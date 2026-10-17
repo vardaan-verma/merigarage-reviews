@@ -5,6 +5,13 @@ import type { GarageSummaryDto, ServiceDto } from '../api/types';
 import { GarageCard } from '../components/GarageCard';
 import { Alert } from '../components/Alert';
 import scribbleUnderline from '../assets/scribble-underline.png';
+import {
+  safeTrackLeadEvent,
+  setActiveSearchSession,
+  parseVehicleString,
+  mapServiceNameToSlug,
+  notifySearchStarted,
+} from '../utils/searchSession';
 
 // Floating WebP elements for cinematic animated hero
 import tireImg from '../assets/hero-elements/01_tire.webp';
@@ -68,14 +75,15 @@ export const HomePage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   // Hero Lead Generation & Quote Form State
-  const [selectedState, setSelectedState] = useState('Delhi NCR');
-  const [selectedCity, setSelectedCity] = useState('Gurugram');
+  const [selectedState, setSelectedState] = useState('');
+  const [selectedCity, setSelectedCity] = useState('');
   const [customCity, setCustomCity] = useState('');
-  const [selectedCar, setSelectedCar] = useState('Maruti Suzuki Swift / Dzire');
-  const [selectedService, setSelectedService] = useState('Periodic Maintenance Service');
+  const [selectedCar, setSelectedCar] = useState('');
+  const [selectedService, setSelectedService] = useState('');
   const [mobileNumber, setMobileNumber] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [formSubmitted, setFormSubmitted] = useState(false);
+  const [mobileFormExpanded, setMobileFormExpanded] = useState(false);
 
   // GPS Locate state
   const [locateStatus, setLocateStatus] = useState<'idle' | 'locating' | 'success' | 'denied' | 'unavailable'>('idle');
@@ -120,12 +128,9 @@ export const HomePage: React.FC = () => {
   const handleStateChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const state = e.target.value;
     setSelectedState(state);
-    const cities = INDIAN_STATES_CITIES[state] || [];
-    if (cities.length > 0) {
-      setSelectedCity(cities[0]);
-    } else {
-      setSelectedCity('');
-    }
+    setSelectedCity('');
+    setCustomCity('');
+    notifySearchStarted({ state });
   };
 
   const handleUseCurrentLocation = () => {
@@ -139,41 +144,73 @@ export const HomePage: React.FC = () => {
 
     setLocateStatus('locating');
     setFormError(null);
+    notifySearchStarted();
 
     navigator.geolocation.getCurrentPosition(
-      (position) => {
+      async (position) => {
         const lat = position.coords.latitude;
         const lng = position.coords.longitude;
         setUserCoords({ lat, lng });
         setLocateStatus('success');
-        setSelectedCity('Near You');
+
+        // Attempt reverse geocoding to determine State and City
+        try {
+          const resp = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=10`
+          );
+          if (resp.ok) {
+            const data = await resp.json();
+            const addr = data?.address || {};
+            const detectedCity = addr.city || addr.town || addr.village || addr.suburb || addr.state_district || '';
+            const detectedState = addr.state || '';
+
+            let matchedState = Object.keys(INDIAN_STATES_CITIES).find(
+              (st) => st.toLowerCase() === detectedState.toLowerCase() || detectedState.toLowerCase().includes(st.toLowerCase())
+            );
+            if (matchedState) {
+              setSelectedState(matchedState);
+              const cities = INDIAN_STATES_CITIES[matchedState] || [];
+              const matchedCity = cities.find(
+                (c) => c.toLowerCase() === detectedCity.toLowerCase() || detectedCity.toLowerCase().includes(c.toLowerCase())
+              );
+              if (matchedCity) {
+                setSelectedCity(matchedCity);
+              } else if (detectedCity) {
+                setSelectedCity('Other');
+                setCustomCity(detectedCity);
+              }
+            } else if (detectedCity) {
+              setSelectedCity('Other');
+              setCustomCity(detectedCity);
+            }
+          }
+        } catch {
+          // If geocoding fails, coordinates are still stored for distance sorting
+        }
         setFormError(null);
       },
       (geoError) => {
         setUserCoords(null);
         if (geoError.code === geoError.PERMISSION_DENIED) {
           setLocateStatus('denied');
-          setFormError('Location permission denied. Please select your city manually.');
+          setFormError('Location permission denied. Please select your state and city manually.');
         } else {
           setLocateStatus('unavailable');
-          setFormError('Unable to detect location. Please select your city manually.');
+          setFormError('Unable to detect location. Please select your state and city manually.');
         }
       },
       { timeout: 10000, enableHighAccuracy: true }
     );
   };
 
-  const handleLeadQuoteSubmit = (e: React.FormEvent) => {
+  const handleLeadQuoteSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
 
     const cityToUse = (customCity.trim() || selectedCity).trim();
-    if (!cityToUse) {
-      setFormError('Please select or enter your city.');
-      return;
-    }
-
     const cleanPhone = mobileNumber.replace(/\D/g, '');
+
+    // Optional phone number validation (validate 10 digits if entered)
     if (cleanPhone && cleanPhone.length !== 10) {
       setFormError('Please enter a valid 10-digit mobile number.');
       return;
@@ -181,43 +218,61 @@ export const HomePage: React.FC = () => {
 
     setFormSubmitted(true);
 
-    // Save lead preferences to session storage so Explore Garages / Detail Page can prefill
-    try {
-      sessionStorage.setItem(
-        'mg_lead_quote',
-        JSON.stringify({
-          city: cityToUse,
-          state: selectedState,
-          car: selectedCar,
-          service: selectedService,
-          phone: cleanPhone,
-          timestamp: Date.now(),
-        })
-      );
-    } catch {
-      // Ignore storage errors
-    }
+    // Parse vehicle details and canonical service slug
+    const parsedVehicle = parseVehicleString(selectedCar);
+    const serviceSlug = mapServiceNameToSlug(selectedService);
 
-    // Direct user to filtered garages in their city with their requested service
+    // Save search workflow into browser session (NO phone number in session or query string for privacy)
+    setActiveSearchSession({
+      state: selectedState || undefined,
+      city: cityToUse && cityToUse !== 'Near You' ? cityToUse : undefined,
+      vehicleType: parsedVehicle.type,
+      vehicleMake: parsedVehicle.make,
+      vehicleModel: parsedVehicle.model,
+      rawVehicle: selectedCar || undefined,
+      serviceSlug: serviceSlug || undefined,
+      serviceName: selectedService || undefined,
+      source: 'landing_page',
+    });
+
+    // Persist HOMEPAGE_SEARCH_SUBMITTED event via real backend endpoint
+    // Phone is passed securely in POST payload; never in URL or public GET params
+    await safeTrackLeadEvent('HOMEPAGE_SEARCH_SUBMITTED', {
+      state: selectedState || undefined,
+      city: cityToUse && cityToUse !== 'Near You' ? cityToUse : undefined,
+      serviceSlug: serviceSlug || undefined,
+      serviceName: selectedService || undefined,
+      vehicleType: parsedVehicle.type,
+      vehicleMake: parsedVehicle.make,
+      vehicleModel: parsedVehicle.model,
+      phoneNumber: cleanPhone || undefined,
+      source: 'landing_page',
+    });
+
+    // Build URL query parameters for Explore Garages
     const params = new URLSearchParams();
     if (locateStatus === 'success' && userCoords) {
       params.set('lat', userCoords.lat.toString());
       params.set('lng', userCoords.lng.toString());
       params.set('sortBy', 'distance');
-    } else {
+    }
+    if (cityToUse && cityToUse !== 'Near You') {
       params.set('city', cityToUse);
     }
-
-    if (selectedService) {
-      params.set('search', selectedService.split(' ')[0]); // e.g. "AC", "Periodic", "Brake"
+    if (selectedState) {
+      params.set('state', selectedState);
+    }
+    if (serviceSlug) {
+      params.set('serviceSlug', serviceSlug);
+    } else if (selectedService) {
+      params.set('search', selectedService.split(' ')[0]);
+    }
+    if (selectedCar) {
+      params.set('vehicle', selectedCar);
     }
 
-    params.set('quoteMode', 'true');
-    params.set('vehicle', selectedCar);
-
-    setTimeout(() => {
-      navigate(`/garages?${params.toString()}`);
-    }, 400);
+    const queryString = params.toString();
+    navigate(queryString ? `/garages?${queryString}` : '/garages');
   };
 
   // Standard automotive icon mapping
@@ -256,89 +311,138 @@ export const HomePage: React.FC = () => {
           <div className="hero-grid">
             {/* Bold Headline & Trust Value Proposition */}
             <div className="hero-heading-block">
-              <div className="hero-network-pill">
+              <div className="hero-text-content">
+                {/* Mobile Location Shortcut Pill (Phone 01 & 02) */}
+                <button
+                  type="button"
+                  onClick={handleUseCurrentLocation}
+                  className="mobile-location-pill"
+                  aria-label="Select or detect location"
+                  title="Tap to detect or change location"
+                >
+                  <span className="material-symbols-outlined text-sm text-primary">search</span>
+                  <span className="truncate max-w-[200px]">
+                    {locateStatus === 'locating'
+                      ? 'Detecting...'
+                      : (customCity || selectedCity)
+                      ? `${customCity || selectedCity}, ${selectedState || 'India'}`
+                      : 'Select a location'}
+                  </span>
+                  <span className="text-2xs text-muted">▼</span>
+                </button>
+
+                {/* Desktop Network Badge */}
+                <div className="hero-network-pill">
                   <span className="pulse-indicator" aria-hidden="true"></span>
                   <span>INDIA'S TRUSTED GARAGE NETWORK</span>
                 </div>
 
-              <h1 className="hero-title">
-                Find a {' '}
-                <span className="hero-trusted-wrap" style={{ position: 'relative', display: 'inline-block' }}>
-                  <span className="hero-accent-text homemade-apple-regular" style={{ position: 'relative', zIndex: 2 }}>
-                    trusted
-                  </span>
-                  <img
-                    src={scribbleUnderline}
-                    alt=""
-                    className="hero-scribble-underline"
-                    style={{
-                      position: 'absolute',
-                      left: '-8%',
-                      top:'60px',
-                      bottom: '-22px',
-                      width: '100%',
-                      height: 'auto',
-                      pointerEvents: 'none',
-                      userSelect: 'none',
-                      zIndex: 1,
-                      filter: 'drop-shadow(0 3px 10px rgba(0, 0, 0, 0.9))',
-                    }}
-                    aria-hidden="true"
-                  />
-                </span>{' '}
-                garage
-              </h1>
+                <h1 className="hero-title">
+                  <span className="hero-title-line hero-line-find">Find a</span>{' '}
+                  <span className="hero-title-line hero-line-trusted">
+                    <span className="hero-trusted-wrap">
+                      <span className="hero-accent-text homemade-apple-regular">
+                        trusted
+                      </span>
+                      <img
+                        src={scribbleUnderline}
+                        alt=""
+                        className="hero-scribble-underline"
+                        aria-hidden="true"
+                      />
+                    </span>
+                  </span>{' '}
+                  <span className="hero-title-line hero-line-garage">garage</span>
+                </h1>
 
-              <p className="hero-subtitle">
-                Discover authorized workshops & expert mechanics near you. No surprise charges, no guesswork.
-              </p>
+                <p className="hero-subtitle">
+                  Discover authorized workshops & expert mechanics near you. No surprise charges, no guesswork.
+                </p>
+              </div>
+
+              <div className="hero-bottom-content">
+                {/* Desktop Action Buttons */}
+                <div className="hero-actions">
+                  <Link to="/garages" className="btn btn-primary btn-lg hero-cta-btn">
+                    <span className="material-symbols-outlined text-lg">star</span>
+                    <span>Write a Review</span>
+                  </Link>
+                  <Link to="/submit-garage" className="btn btn-secondary btn-lg hero-cta-btn">
+                    List Your Garage
+                  </Link>
+                </div>
+
+                {/* Desktop Trust Metric Stats Bar */}
+                <div className="hero-stats-row">
+                  <div className="hero-stat-item">
+                    <span className="stat-number">5,000+</span>
+                    <span className="stat-label">Verified garages</span>
+                  </div>
+                  <div className="hero-stat-divider" aria-hidden="true"></div>
+                  <div className="hero-stat-item">
+                    <span className="stat-number">50,000+</span>
+                    <span className="stat-label">Happy customers</span>
+                  </div>
+                  <div className="hero-stat-divider" aria-hidden="true"></div>
+                  <div className="hero-stat-item">
+                    <span className="stat-number">4.7 ★</span>
+                    <span className="stat-label">Average rating</span>
+                  </div>
+                  <div className="hero-stat-divider" aria-hidden="true"></div>
+                  <div className="hero-stat-item">
+                    <span className="stat-number">15+</span>
+                    <span className="stat-label">Cities active</span>
+                  </div>
+                </div>
+              </div>
             </div>
-
-              {/* Action Buttons */}
-              <div className="hero-actions">
-                <Link to="/garages" className="btn btn-primary btn-lg hero-cta-btn">
-                  <span className="material-symbols-outlined text-lg">star</span>
-                  <span>Write a Review</span>
-                </Link>
-                <Link to="/submit-garage" className="btn btn-secondary btn-lg hero-cta-btn">
-                  List Your Garage
-                </Link>
-              </div>
-
-              {/* Trust Metric Stats Bar */}
-              <div className="hero-stats-row">
-                <div className="hero-stat-item">
-                  <span className="stat-number">5,000+</span>
-                  <span className="stat-label">Verified garages</span>
-                </div>
-                <div className="hero-stat-divider" aria-hidden="true"></div>
-                <div className="hero-stat-item">
-                  <span className="stat-number">50,000+</span>
-                  <span className="stat-label">Happy customers</span>
-                </div>
-                <div className="hero-stat-divider" aria-hidden="true"></div>
-                <div className="hero-stat-item">
-                  <span className="stat-number">4.7 ★</span>
-                  <span className="stat-label">Average rating</span>
-                </div>
-                <div className="hero-stat-divider" aria-hidden="true"></div>
-                <div className="hero-stat-item">
-                  <span className="stat-number">15+</span>
-                  <span className="stat-label">Cities active</span>
-                </div>
-              </div>
 
             {/* Right Column: Lead Generation & Instant Quote Card */}
             <div className="hero-form-col">
-              <div className="hero-quote-card">
-                {/* Vibrant Card Header */}
-                <div className="quote-card-header">
-                  <h2 className="quote-card-title">Experience The Best Car Services Near You</h2>
-                  <p className="quote-card-subtitle">Get instant quotes from verified garages</p>
+              <div className={`hero-quote-card ${mobileFormExpanded ? 'is-mobile-expanded' : ''}`}>
+                {/* Header (Acts as disclosure accordion toggle on mobile) */}
+                <button
+                  type="button"
+                  className="quote-card-header-toggle"
+                  onClick={() => setMobileFormExpanded((prev) => !prev)}
+                  aria-expanded={mobileFormExpanded}
+                  aria-controls="hero-quote-form-body"
+                  id="hero-quote-form-header"
+                >
+                  <div className="quote-card-header-content">
+                    <h2 className="quote-card-title">Experience the Best Car Services Near You</h2>
+                    <p className="quote-card-subtitle">Get instant quotes from verified garages</p>
+                  </div>
+                  <span
+                    className={`quote-card-chevron material-symbols-outlined ${
+                      mobileFormExpanded ? 'is-expanded' : ''
+                    }`}
+                    aria-hidden="true"
+                  >
+                    expand_more
+                  </span>
+                </button>
+
+                {/* Collapsed State CTA for Mobile (State 01) */}
+                <div className="mobile-collapsed-cta">
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-quote-action"
+                    onClick={() => setMobileFormExpanded(true)}
+                  >
+                    Find a Trusted Garage
+                  </button>
                 </div>
 
-                {/* Form Controls */}
-                <form onSubmit={handleLeadQuoteSubmit} className="quote-card-body" noValidate>
+                {/* Form Controls (Expanded on mobile State 02, always visible on desktop) */}
+                <form
+                  id="hero-quote-form-body"
+                  role="region"
+                  aria-labelledby="hero-quote-form-header"
+                  onSubmit={handleLeadQuoteSubmit}
+                  className="quote-card-body"
+                  noValidate
+                >
                   {formError && (
                     <div className="quote-form-alert text-xs text-danger mb-2 font-medium">
                       ⚠️ {formError}
@@ -348,7 +452,7 @@ export const HomePage: React.FC = () => {
                   {/* Field 1: State & City */}
                   <div className="form-field-group">
                     <label className="field-label" htmlFor="hero-state-select">
-                      YOUR STATE & CITY
+                      SELECT LOCATION / CITY
                     </label>
                     <div className="grid-2-inputs">
                       <select
@@ -358,6 +462,7 @@ export const HomePage: React.FC = () => {
                         className="quote-select"
                         aria-label="Select State"
                       >
+                        <option value="">-- Select State --</option>
                         {Object.keys(INDIAN_STATES_CITIES).map((st) => (
                           <option key={st} value={st}>
                             {st}
@@ -376,13 +481,13 @@ export const HomePage: React.FC = () => {
                           className="quote-select"
                           aria-label="Select City"
                         >
+                          <option value="">-- Select City --</option>
                           {(INDIAN_STATES_CITIES[selectedState] || []).map((city) => (
                             <option key={city} value={city}>
                               {city}
                             </option>
                           ))}
-                          <option value="Near You">📍 Near You (GPS)</option>
-                          <option value="Other">Other City...</option>
+                          {selectedState && <option value="Other">Other City...</option>}
                         </select>
                       </div>
                     </div>
@@ -410,8 +515,8 @@ export const HomePage: React.FC = () => {
                           {locateStatus === 'locating'
                             ? 'Detecting...'
                             : locateStatus === 'success'
-                            ? 'GPS Location Set ✓'
-                            : 'Use Current Location'}
+                            ? 'Location Detected ✓'
+                            : 'Or detect location'}
                         </span>
                       </button>
                     </div>
@@ -420,15 +525,19 @@ export const HomePage: React.FC = () => {
                   {/* Field 2: Select Car / Vehicle */}
                   <div className="form-field-group">
                     <label className="field-label" htmlFor="hero-car-select">
-                      SELECT YOUR CAR
+                      SELECT CAR MAKE & MODEL
                     </label>
                     <select
                       id="hero-car-select"
                       value={selectedCar}
-                      onChange={(e) => setSelectedCar(e.target.value)}
+                      onChange={(e) => {
+                        setSelectedCar(e.target.value);
+                        notifySearchStarted();
+                      }}
                       className="quote-select"
                       aria-label="Select Your Car or Vehicle"
                     >
+                      <option value="">Select Car Make & Model (Optional)</option>
                       {POPULAR_VEHICLES.map((v) => (
                         <option key={v} value={v}>
                           {v}
@@ -440,15 +549,19 @@ export const HomePage: React.FC = () => {
                   {/* Field 3: Service Needed */}
                   <div className="form-field-group">
                     <label className="field-label" htmlFor="hero-service-select">
-                      SELECT SERVICE NEEDED
+                      SELECT SERVICE TYPE
                     </label>
                     <select
                       id="hero-service-select"
                       value={selectedService}
-                      onChange={(e) => setSelectedService(e.target.value)}
+                      onChange={(e) => {
+                        setSelectedService(e.target.value);
+                        notifySearchStarted();
+                      }}
                       className="quote-select"
                       aria-label="Select Service"
                     >
+                      <option value="">Select Service Type (Optional)</option>
                       {POPULAR_SERVICES_LIST.map((srv) => (
                         <option key={srv} value={srv}>
                           {srv}
@@ -473,11 +586,17 @@ export const HomePage: React.FC = () => {
                         maxLength={10}
                         placeholder="Enter mobile number"
                         value={mobileNumber}
-                        onChange={(e) => setMobileNumber(e.target.value.replace(/\D/g, ''))}
+                        onChange={(e) => {
+                          setMobileNumber(e.target.value.replace(/\D/g, ''));
+                          notifySearchStarted();
+                        }}
                         className="quote-input phone-field"
                         aria-label="Mobile Number for Quote"
                       />
                     </div>
+                    <p className="privacy-notice-text">
+                      🔒 Mobile number is used strictly to share quotes from verified garages. No spam.
+                    </p>
                   </div>
 
                   {/* Primary Form CTA */}
@@ -486,26 +605,55 @@ export const HomePage: React.FC = () => {
                     className="btn btn-primary btn-quote-action"
                     disabled={formSubmitted}
                   >
-                    {formSubmitted ? 'FINDING WORKSHOPS...' : 'GET A QUOTE'}
+                    {formSubmitted ? 'FINDING WORKSHOPS...' : 'Find a Trusted Garage'}
                   </button>
-                </form>
 
-                {/* Trust Endorsement Under Form */}
-                <div className="quote-card-trust">
-                  <div className="trust-stars-row">
-                    <span className="stars-icons">★★★★★</span>
-                    <span className="stars-score">4.7/5</span>
-                    <span className="stars-meta">based on 50,000+ reviews</span>
+                  {/* Trust Endorsement Under Form */}
+                  <div className="quote-card-trust">
+                    <div className="trust-stars-row">
+                      <span className="stars-icons text-amber-400">★★★★★</span>
+                      <span className="stars-score">4.8 Rating</span>
+                      <span className="stars-meta">• 50k+ Happy Customers | MeriGarage Promise</span>
+                    </div>
                   </div>
-                  <div className="trust-customers-row">
-                    <span className="customers-bold">2 Million+</span> Happy Customers
-                  </div>
-                </div>
+                </form>
+              </div>
+
+              {/* Mobile Secondary Action Pills (State 01) */}
+              <div className="mobile-hero-secondary-actions">
+                <Link to="/garages" className="mobile-pill-btn mobile-pill-primary">
+                  Online Booking
+                </Link>
+                <button
+                  type="button"
+                  onClick={handleUseCurrentLocation}
+                  className="mobile-pill-btn mobile-pill-secondary"
+                >
+                  Find Near Garage
+                </button>
               </div>
             </div>
           </div>
         </div>
       </header>
+
+      {/* Mobile 3-column Statistics Row matching State 03 reference */}
+      <div className="mobile-stats-row">
+        <div className="mobile-stat-box">
+          <span className="mobile-stat-val">5,000+</span>
+          <span className="mobile-stat-lbl">Services done</span>
+        </div>
+        <div className="mobile-stat-divider" aria-hidden="true"></div>
+        <div className="mobile-stat-box">
+          <span className="mobile-stat-val">30,000+</span>
+          <span className="mobile-stat-lbl">Happy customers</span>
+        </div>
+        <div className="mobile-stat-divider" aria-hidden="true"></div>
+        <div className="mobile-stat-box">
+          <span className="mobile-stat-val">4.7 ★</span>
+          <span className="mobile-stat-lbl">Rating</span>
+        </div>
+      </div>
 
       {/* Short horizontal divider */}
       <div className="section-divider-short" aria-hidden="true"></div>

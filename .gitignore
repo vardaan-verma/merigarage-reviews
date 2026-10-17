@@ -3,3 +3,7 @@ images/
 
 # Local test artifacts
 cookies.txt
+.env
+.env.*
+*.local
+

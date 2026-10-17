@@ -37,6 +37,14 @@ public class User {
     @Column(name = "phone_number", length = 20)
     private String phoneNumber;
 
+    @Size(max = 100)
+    @Column(name = "registration_source", length = 100)
+    private String registrationSource;
+
+    @Size(max = 50)
+    @Column(name = "consent_status", length = 50)
+    private String consentStatus;
+
     @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 30)
@@ -122,6 +130,22 @@ public class User {
 
     public void setStatus(UserStatus status) {
         this.status = status;
+    }
+
+    public String getRegistrationSource() {
+        return registrationSource;
+    }
+
+    public void setRegistrationSource(String registrationSource) {
+        this.registrationSource = registrationSource;
+    }
+
+    public String getConsentStatus() {
+        return consentStatus;
+    }
+
+    public void setConsentStatus(String consentStatus) {
+        this.consentStatus = consentStatus;
     }
 
     public LocalDateTime getEmailVerifiedAt() {

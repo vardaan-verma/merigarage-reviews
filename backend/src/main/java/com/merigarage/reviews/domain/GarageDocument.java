@@ -22,6 +22,14 @@ public class GarageDocument {
     @JoinColumn(name = "garage_id", nullable = false)
     private Garage garage;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "claim_id")
+    private GarageClaim claim;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "uploaded_by_user_id")
+    private User uploadedBy;
+
     @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "document_type", nullable = false, length = 50)
@@ -89,6 +97,22 @@ public class GarageDocument {
 
     public void setGarage(Garage garage) {
         this.garage = garage;
+    }
+
+    public GarageClaim getClaim() {
+        return claim;
+    }
+
+    public void setClaim(GarageClaim claim) {
+        this.claim = claim;
+    }
+
+    public User getUploadedBy() {
+        return uploadedBy;
+    }
+
+    public void setUploadedBy(User uploadedBy) {
+        this.uploadedBy = uploadedBy;
     }
 
     public DocumentType getDocumentType() {

@@ -15,4 +15,14 @@ public interface GarageDocumentRepository extends JpaRepository<GarageDocument, 
     List<GarageDocument> findByGarageIdAndVerificationStatus(Long garageId, DocumentVerificationStatus verificationStatus);
 
     List<GarageDocument> findByVerificationStatus(DocumentVerificationStatus verificationStatus);
+
+    List<GarageDocument> findByClaimId(Long claimId);
+
+    List<GarageDocument> findByClaimIdAndVerificationStatus(Long claimId, DocumentVerificationStatus verificationStatus);
+
+    long countByClaimId(Long claimId);
+
+    long countByClaimIdAndVerificationStatus(Long claimId, DocumentVerificationStatus verificationStatus);
+
+    List<GarageDocument> findByClaimIdIn(List<Long> claimIds);
 }

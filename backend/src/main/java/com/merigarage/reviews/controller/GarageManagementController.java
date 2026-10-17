@@ -64,9 +64,12 @@ public class GarageManagementController {
     @GetMapping("/my-garages/{id}")
     public ResponseEntity<GarageDetailDto> getMyGarageById(@PathVariable Long id) {
         User currentUser = securityContextService.getRequiredCurrentUser();
-        verifyGarageOwnership(id, currentUser);
-
         Garage garage = garageService.getGarageById(id);
+        boolean isOwner = garage.getOwner() != null && garage.getOwner().getId().equals(currentUser.getId());
+        boolean isCreatorDuringListing = garage.getOwner() == null && garage.getCreatedBy() != null && garage.getCreatedBy().getId().equals(currentUser.getId());
+        if (!isOwner && !isCreatorDuringListing) {
+            throw new ForbiddenOperationException("Only the authorized garage owner can perform this operation.");
+        }
         List<GaragePhoto> photos = mediaService.getActivePhotosForGarage(id);
         Long coverPhotoId = photos.stream()
                 .filter(p -> Boolean.TRUE.equals(p.getIsCover()))

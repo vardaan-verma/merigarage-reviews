@@ -32,13 +32,16 @@ public class GarageMediaService {
     private final GaragePhotoRepository photoRepository;
     private final GarageDocumentRepository documentRepository;
     private final GarageRepository garageRepository;
+    private final AuditTrailService auditTrailService;
 
     public GarageMediaService(GaragePhotoRepository photoRepository,
                               GarageDocumentRepository documentRepository,
-                              GarageRepository garageRepository) {
+                              GarageRepository garageRepository,
+                              AuditTrailService auditTrailService) {
         this.photoRepository = photoRepository;
         this.documentRepository = documentRepository;
         this.garageRepository = garageRepository;
+        this.auditTrailService = auditTrailService;
     }
 
     @Transactional
@@ -200,7 +203,16 @@ public class GarageMediaService {
         doc.setReviewedAt(LocalDateTime.now());
         doc.setRejectionReason(rejectionReason);
 
-        return documentRepository.save(doc);
+        GarageDocument saved = documentRepository.save(doc);
+
+        if (auditTrailService != null) {
+            auditTrailService.recordAction(adminUser,
+                    status == DocumentVerificationStatus.VERIFIED ? "DOCUMENT_VERIFICATION" : "DOCUMENT_REJECTION",
+                    "DOCUMENT", documentId, status.name(), rejectionReason,
+                    "{\"garageId\":" + doc.getGarage().getId() + ",\"docType\":\"" + doc.getDocumentType() + "\"}");
+        }
+
+        return saved;
     }
 
     public GaragePhoto getPhotoById(Long photoId) {

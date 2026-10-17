@@ -285,19 +285,19 @@ const getGoogleIdClient = (): GoogleIdClient | undefined => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <button
                   type="button"
-                  onClick={() => handleDemoSignIn('google.motorist@merigarage.com', 'Rahul (Google Motorist)')}
+                  onClick={() => handleDemoSignIn('google.motorist@merigarage.com', 'Rahul (Google Customer)')}
                   className="btn btn-outline btn-sm flex items-center justify-center gap-1.5 py-2"
                 >
                   <span className="material-symbols-outlined text-sm text-primary">directions_car</span>
-                  <span>Test as Motorist</span>
+                  <span>Test as Customer</span>
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleDemoSignIn('google.owner@merigarage.com', 'Vikram (Google Workshop)')}
+                  onClick={() => handleDemoSignIn('google.owner@merigarage.com', 'Vikram (Google Garage)')}
                   className="btn btn-outline btn-sm flex items-center justify-center gap-1.5 py-2"
                 >
                   <span className="material-symbols-outlined text-sm text-primary">construction</span>
-                  <span>Test as Workshop Hub</span>
+                  <span>Test as Garage Login</span>
                 </button>
               </div>
             </div>

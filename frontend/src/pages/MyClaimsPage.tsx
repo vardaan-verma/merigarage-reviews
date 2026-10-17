@@ -56,6 +56,34 @@ export const MyClaimsPage: React.FC = () => {
     };
   }, []);
 
+  const [downloadingDocId, setDownloadingDocId] = useState<number | null>(null);
+
+  const handleDownloadDocument = async (claimId: number, docId: number, fileName: string) => {
+    try {
+      setDownloadingDocId(docId);
+      await api.claims.downloadDocument(claimId, docId, fileName);
+    } catch (err: any) {
+      alert(err.message || 'Failed to download document');
+    } finally {
+      setDownloadingDocId(null);
+    }
+  };
+
+  const formatDocType = (type: string) => {
+    switch (type) {
+      case 'OWNERSHIP_PROOF':
+        return 'Proof of Ownership / Lease / Utility Bill';
+      case 'TRADE_LICENSE':
+        return 'Trade / Municipal License';
+      case 'GST_CERTIFICATE':
+        return 'GST Registration Certificate';
+      case 'ID_PROOF':
+        return 'Government ID of Signatory';
+      default:
+        return type;
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'APPROVED':
@@ -139,6 +167,11 @@ export const MyClaimsPage: React.FC = () => {
                   <h3 className="text-lg font-bold text-white break-words">
                     {claim.garageName}
                   </h3>
+                  {(claim.garageAddress || claim.garageCity) && (
+                    <p className="text-xs text-muted mt-0.5">
+                      {[claim.garageAddress, claim.garageCity].filter(Boolean).join(', ')}
+                    </p>
+                  )}
                   <div className="text-xs text-muted mt-1 flex items-center gap-2 flex-wrap">
                     <span className="font-mono">Claim #{claim.id}</span>
                     <span>•</span>
@@ -169,9 +202,85 @@ export const MyClaimsPage: React.FC = () => {
                 </div>
               </div>
 
+              {/* Claimant Contact Details */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 text-xs bg-surface/50 p-3 rounded-lg border border-border/40 mb-3">
+                <div>
+                  <span className="text-2xs text-muted block">Claimant Name</span>
+                  <span className="text-white font-medium">
+                    {claim.claimantName || claim.claimantFullName || 'Not specified'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-2xs text-muted block">Contact Phone</span>
+                  <span className="text-white font-mono">{claim.claimantPhone || 'Not specified'}</span>
+                </div>
+                <div>
+                  <span className="text-2xs text-muted block">Account Email</span>
+                  <span className="text-white truncate block">{claim.claimantEmail}</span>
+                </div>
+                <div>
+                  <span className="text-2xs text-muted block">Business Reg #</span>
+                  <span className="text-white font-mono">{claim.businessRegNumber || 'N/A'}</span>
+                </div>
+              </div>
+
+              {/* Submitted Reason */}
               <div className="text-xs text-secondary bg-elevated p-4 rounded-xl mb-3 border border-border">
                 <span className="text-muted font-bold block mb-1">Your Submitted Claim Reason:</span>
                 <p className="text-white leading-relaxed break-words">{claim.claimMessage}</p>
+              </div>
+
+              {/* Submitted Verification Documents */}
+              <div className="border border-border/50 rounded-xl overflow-hidden mb-3">
+                <div className="bg-surface px-4 py-2 text-xs font-semibold text-white flex-between items-center border-b border-border/50">
+                  <span>Submitted Verification Documents</span>
+                  <span className="text-2xs text-muted">
+                    {claim.documents && claim.documents.length > 0 ? `${claim.documents.length} attached` : 'None'}
+                  </span>
+                </div>
+                {claim.documents && claim.documents.length > 0 ? (
+                  <div className="divide-y divide-border/30 bg-elevated/40">
+                    {claim.documents.map((doc) => (
+                      <div key={doc.id} className="p-3 flex items-center justify-between gap-3 flex-wrap">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-medium text-white">{formatDocType(doc.documentType)}</span>
+                            <span
+                              className={`badge badge-xs ${
+                                doc.verificationStatus === 'VERIFIED'
+                                  ? 'badge-success'
+                                  : doc.verificationStatus === 'REJECTED'
+                                  ? 'badge-danger'
+                                  : 'badge-warning'
+                              }`}
+                            >
+                              {doc.verificationStatus}
+                            </span>
+                          </div>
+                          <span className="text-2xs text-muted block truncate font-mono mt-0.5">
+                            {doc.originalFileName} • {((doc.fileSizeBytes || 0) / 1024).toFixed(1)} KB
+                          </span>
+                          {doc.rejectionReason && (
+                            <span className="text-2xs text-danger block mt-1">
+                              Rejection note: {doc.rejectionReason}
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-xs flex items-center gap-1"
+                          onClick={() => handleDownloadDocument(claim.id, doc.id, doc.originalFileName)}
+                          disabled={downloadingDocId === doc.id}
+                        >
+                          <span className="material-symbols-outlined text-xs">download</span>
+                          {downloadingDocId === doc.id ? 'Opening...' : 'View / Download'}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="p-3 text-xs text-muted">No proof documents attached to this claim.</p>
+                )}
               </div>
 
               {/* Admin Review Result */}

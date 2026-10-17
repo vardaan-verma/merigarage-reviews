@@ -34,6 +34,21 @@ public class GarageClaim {
     @Column(name = "claim_message", nullable = false, columnDefinition = "TEXT")
     private String claimMessage;
 
+    @Column(name = "claimant_name", length = 150)
+    private String claimantName;
+
+    @Column(name = "claimant_phone", length = 30)
+    private String claimantPhone;
+
+    @Column(name = "claimant_email", length = 150)
+    private String claimantEmail;
+
+    @Column(name = "business_reg_number", length = 100)
+    private String businessRegNumber;
+
+    @OneToMany(mappedBy = "claim")
+    private java.util.List<GarageDocument> documents = new java.util.ArrayList<>();
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "reviewed_by_admin_id")
     private User reviewedBy;
@@ -122,6 +137,46 @@ public class GarageClaim {
 
     public void setReviewedAt(LocalDateTime reviewedAt) {
         this.reviewedAt = reviewedAt;
+    }
+
+    public String getClaimantName() {
+        return claimantName;
+    }
+
+    public void setClaimantName(String claimantName) {
+        this.claimantName = claimantName;
+    }
+
+    public String getClaimantPhone() {
+        return claimantPhone;
+    }
+
+    public void setClaimantPhone(String claimantPhone) {
+        this.claimantPhone = claimantPhone;
+    }
+
+    public String getClaimantEmail() {
+        return claimantEmail;
+    }
+
+    public void setClaimantEmail(String claimantEmail) {
+        this.claimantEmail = claimantEmail;
+    }
+
+    public String getBusinessRegNumber() {
+        return businessRegNumber;
+    }
+
+    public void setBusinessRegNumber(String businessRegNumber) {
+        this.businessRegNumber = businessRegNumber;
+    }
+
+    public java.util.List<GarageDocument> getDocuments() {
+        return documents;
+    }
+
+    public void setDocuments(java.util.List<GarageDocument> documents) {
+        this.documents = documents;
     }
 
     public String getDecisionNotes() {

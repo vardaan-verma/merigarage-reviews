@@ -137,7 +137,7 @@ export const GarageSearchMap: React.FC<GarageSearchMapProps> = ({
           <h4 style="font-weight: 700; font-size: 13px; margin: 0 0 4px 0;">${garage.name}</h4>
           <p style="font-size: 11px; margin: 0 0 6px 0; color: #64748b;">${garage.city}, ${garage.state}</p>
           ${garage.isVerified ? '<span style="background: #10b981; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600;">✓ Verified</span><br/><br/>' : ''}
-          <a href="/garages/${garage.slug}" style="font-size: 11px; color: #2563eb; font-weight: 600; text-decoration: underline;">View Workshop →</a>
+          <a href="/garages/${garage.slug}" style="font-size: 11px; color: #eb1620; font-weight: 600; text-decoration: underline;">View Workshop →</a>
         </div>
       `;
 

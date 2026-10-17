@@ -5,6 +5,12 @@ import { Alert } from './Alert';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import type { GarageDetailDto, QuoteRequestDto } from '../api/types';
+import {
+  resolveVehicleDetails,
+  recordUserVehiclePreference,
+  getActiveSearchSession,
+  safeTrackLeadEvent,
+} from '../utils/searchSession';
 
 interface QuoteRequestModalProps {
   isOpen: boolean;
@@ -86,20 +92,66 @@ export const QuoteRequestModal: React.FC<QuoteRequestModalProps> = ({
       if (user.email && !contactEmail) {
         setContactEmail(user.email);
       }
+      if (user.phoneNumber && !contactPhone) {
+        setContactPhone(user.phoneNumber);
+      }
     }
-  }, [user, contactEmail]);
+  }, [user, contactEmail, contactPhone]);
 
-  // Reset form when modal opens
+  // Reset form and prefill known criteria when modal opens
   useEffect(() => {
     if (isOpen) {
       setError(null);
       setSubmittedQuote(null);
-      // Preselect first service if available
-      if (availableServices.length > 0 && selectedServiceIds.length === 0) {
+
+      const session = getActiveSearchSession();
+
+      // Pre-select matching service from active search session if garage offers it
+      if (session?.serviceSlug) {
+        const matched = availableServices.find(
+          (s) =>
+            s.serviceName.toLowerCase().includes(session.serviceName?.toLowerCase() || '') ||
+            s.category.toLowerCase().replace(/_/g, '-').includes(session.serviceSlug!.toLowerCase())
+        );
+        if (matched) {
+          setSelectedServiceIds([matched.serviceId]);
+        } else if (availableServices.length > 0 && selectedServiceIds.length === 0) {
+          setSelectedServiceIds([availableServices[0].serviceId]);
+        }
+      } else if (availableServices.length > 0 && selectedServiceIds.length === 0) {
         setSelectedServiceIds([availableServices[0].serviceId]);
       }
+
+      // Prefill vehicle using 4-tier precedence:
+      // 1. Explicit current values (if user already typed)
+      // 2. Active workflow session (e.g. Tata Harrier selected on homepage or Explore)
+      // 3. Previously saved user preferences (from past quotes)
+      // 4. Empty otherwise
+      const resolved = resolveVehicleDetails({
+        make: vehicleMake,
+        model: vehicleModel,
+        type: vehicleType,
+      });
+
+      if (!vehicleMake && resolved.make) {
+        setVehicleMake(resolved.make);
+      }
+      if (!vehicleModel && resolved.model) {
+        setVehicleModel(resolved.model);
+      }
+      if (resolved.type && (!vehicleType || vehicleType === 'CAR')) {
+        setVehicleType(resolved.type);
+      }
+
+      // Autofill phone and email if user profile has them and inputs are blank
+      if (!contactPhone && user?.phoneNumber) {
+        setContactPhone(user.phoneNumber);
+      }
+      if (!contactEmail && user?.email) {
+        setContactEmail(user.email);
+      }
     }
-  }, [isOpen, availableServices]);
+  }, [isOpen, availableServices, user]);
 
   // Calculate indicative pricing
   const { totalEstimatedMin, allHavePricing, selectedServiceCount } = useMemo(() => {
@@ -183,6 +235,33 @@ export const QuoteRequestModal: React.FC<QuoteRequestModalProps> = ({
 
       const result = await api.quotes.create(payload);
       setSubmittedQuote(result);
+
+      // Record user vehicle preference for future sessions
+      recordUserVehiclePreference({
+        make: vehicleMake.trim(),
+        model: vehicleModel.trim(),
+        type: vehicleType,
+      });
+
+      // Track distinct event: User submits a quote request
+      await safeTrackLeadEvent('QUOTE_REQUEST_SUBMITTED', {
+        garageId: garage.id,
+        garageSlug: garage.slug,
+        city: garage.city,
+        state: garage.state,
+        vehicleType,
+        vehicleMake: vehicleMake.trim(),
+        vehicleModel: vehicleModel.trim(),
+        phoneNumber: cleanPhone,
+        source: 'quote_modal',
+        metadata: {
+          garageName: garage.name,
+          referenceNumber: result.referenceNumber,
+          quoteRequestId: result.id,
+          contactEmail: contactEmail.trim() || user?.email || undefined,
+        },
+      });
+
       if (onSuccess) {
         onSuccess(result);
       }
@@ -535,6 +614,9 @@ export const QuoteRequestModal: React.FC<QuoteRequestModalProps> = ({
                 />
               </div>
             </div>
+            <p className="text-2xs text-muted block mt-1" style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: '0.25rem' }}>
+              🔒 Your contact information is shared exclusively with {garage.name} for fulfilling this quote request. No third-party spam.
+            </p>
           </div>
 
           {/* 5. Indicative Pricing Estimate Banner */}

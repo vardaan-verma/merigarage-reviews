@@ -1,0 +1,12 @@
+package com.merigarage.reviews.domain.enums;
+
+public enum LeadEventType {
+    HOMEPAGE_SEARCH_STARTED,
+    HOMEPAGE_SEARCH_SUBMITTED,
+    EXPLORE_GARAGES_VIEWED,
+    GARAGE_PROFILE_VIEWED,
+    SIGNUP_STARTED,
+    USER_REGISTERED,
+    QUOTE_REQUEST_SUBMITTED,
+    GENERIC_CONVERSION
+}

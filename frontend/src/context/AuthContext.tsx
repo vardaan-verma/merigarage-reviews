@@ -10,7 +10,14 @@ interface AuthContextType {
   isGarageOwner: boolean;
   login: (email: string, password: string) => Promise<UserDto>;
   loginWithGoogle: (credential: string) => Promise<UserDto>;
-  register: (data: { email: string; password: string; fullName: string; phoneNumber?: string }) => Promise<UserDto>;
+  register: (data: {
+    email: string;
+    password: string;
+    fullName: string;
+    phoneNumber?: string;
+    registrationSource?: string;
+    consentStatus?: string;
+  }) => Promise<UserDto>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
   hasRole: (role: RoleName) => boolean;
@@ -55,6 +62,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     password: string;
     fullName: string;
     phoneNumber?: string;
+    registrationSource?: string;
+    consentStatus?: string;
   }): Promise<UserDto> => {
     const registered = await api.auth.register(data);
     return registered;

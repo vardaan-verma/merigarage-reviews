@@ -25,7 +25,7 @@ function NotFoundPage() {
         <h1 className="text-4xl font-bold text-primary mb-2">404</h1>
         <h2 className="text-xl font-semibold mb-2">Page Not Found</h2>
         <p className="text-secondary text-sm mb-6">
-          The requested page could not be located on MeriGarage Reviews.
+          The requested page could not be located on MeriGarage.
         </p>
         <Link to="/" className="btn btn-primary">
           Return to Home
@@ -107,6 +107,10 @@ export function App() {
                       'CLAIM_MANAGEMENT',
                       'VERIFICATION_REVIEW',
                       'CONTENT_MODERATION',
+                      'USER_MANAGEMENT',
+                      'LEAD_ACCESS',
+                      'QUOTE_OVERSIGHT',
+                      'DATA_EXPORT',
                     ]}
                   >
                     <AdminDashboardPage />
