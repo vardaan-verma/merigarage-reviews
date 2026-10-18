@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link, useLocation } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
+import { useConfirm, useAuthRequired, useToast } from '../context/NotificationContext';
 import type {
   GarageDetailDto,
   ReviewDto,
@@ -11,7 +12,6 @@ import type {
 } from '../api/types';
 import { StarRating } from '../components/StarRating';
 import { Pagination } from '../components/Pagination';
-import { Alert } from '../components/Alert';
 import { Modal } from '../components/Modal';
 import { QuoteRequestModal } from '../components/QuoteRequestModal';
 import { AuthRequiredWarning } from '../components/AuthRequiredWarning';
@@ -24,17 +24,18 @@ export const GarageDetailPage: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
   const { user, isAuthenticated, hasRole, hasPermission } = useAuth();
   const location = useLocation();
+  const confirm = useConfirm();
+  const requestAuth = useAuthRequired();
+  const { showSuccess, showError, showWarning } = useToast();
 
   const [garage, setGarage] = useState<GarageDetailDto | null>(null);
   const [reviewsData, setReviewsData] = useState<PagedResponse<ReviewDto> | null>(null);
   const [reviewsLoading, setReviewsLoading] = useState(false);
-  const [reviewsError, setReviewsError] = useState<string | null>(null);
   const [activePhotoIdx, setActivePhotoIdx] = useState<number>(0);
   const [reviewPage, setReviewPage] = useState<number>(0);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
   // Quote Request Modal State
   const [isQuoteModalOpen, setIsQuoteModalOpen] = useState(false);
@@ -54,7 +55,6 @@ export const GarageDetailPage: React.FC = () => {
   const [reviewTitle, setReviewTitle] = useState('');
   const [reviewText, setReviewText] = useState('');
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
-  const [reviewError, setReviewError] = useState<string | null>(null);
   const [ratingErrors, setRatingErrors] = useState<{
     quality?: string;
     pricing?: string;
@@ -74,13 +74,11 @@ export const GarageDetailPage: React.FC = () => {
   const [claimDocType, setClaimDocType] = useState<DocumentType>('OWNERSHIP_PROOF');
   const [claimFile, setClaimFile] = useState<File | null>(null);
   const [claimSubmitting, setClaimSubmitting] = useState(false);
-  const [claimError, setClaimError] = useState<string | null>(null);
 
   // Owner Response State
   const [respondingReviewId, setRespondingReviewId] = useState<number | null>(null);
   const [responseText, setResponseText] = useState('');
   const [responseSubmitting, setResponseSubmitting] = useState(false);
-  const [responseError, setResponseError] = useState<string | null>(null);
 
   // Moderator Delete State
   const [deletingReviewId, setDeletingReviewId] = useState<number | null>(null);
@@ -92,7 +90,6 @@ export const GarageDetailPage: React.FC = () => {
   const [reportReason, setReportReason] = useState<string>('OFFENSIVE_CONTENT');
   const [reportDetails, setReportDetails] = useState('');
   const [reportSubmitting, setReportSubmitting] = useState(false);
-  const [reportError, setReportError] = useState<string | null>(null);
 
   // Fetch Garage Details
   const fetchGarage = useCallback(async () => {
@@ -129,7 +126,6 @@ export const GarageDetailPage: React.FC = () => {
   const fetchReviews = useCallback(async (garageId: number, page: number) => {
     try {
       setReviewsLoading(true);
-      setReviewsError(null);
       const res = await api.reviews.getForGarage(garageId, {
         page,
         size: 5,
@@ -138,11 +134,11 @@ export const GarageDetailPage: React.FC = () => {
       });
       setReviewsData(res);
     } catch (err: any) {
-      setReviewsError(err.message || 'Failed to load reviews');
+      showError(err.message || 'Failed to load reviews');
     } finally {
       setReviewsLoading(false);
     }
-  }, []);
+  }, [showError]);
 
   useEffect(() => {
     fetchGarage();
@@ -230,7 +226,6 @@ export const GarageDetailPage: React.FC = () => {
       setReviewTitle('');
       setReviewText('');
     }
-    setReviewError(null);
     setRatingErrors({});
     setIsReviewModalOpen(true);
   };
@@ -241,7 +236,24 @@ export const GarageDetailPage: React.FC = () => {
 
     if (!isAuthenticated) {
       setReviewAuthWarning(true);
-      setReviewError(null);
+      requestAuth({
+        title: 'Sign In Required',
+        message: editingReviewId
+          ? 'You must be signed in before editing a review.'
+          : 'You must be signed in before writing a review.',
+        portal: 'customer',
+        actionType: editingReviewId ? 'EDIT_REVIEW' : 'WRITE_REVIEW',
+        returnUrl: window.location.pathname + window.location.search,
+        formState: {
+          ratingQuality,
+          ratingPricing,
+          ratingTimeline,
+          ratingCommunication,
+          reviewTitle,
+          reviewText,
+          editingReviewId,
+        },
+      });
       return;
     }
 
@@ -271,13 +283,12 @@ export const GarageDetailPage: React.FC = () => {
 
     if (Object.keys(errors).length > 0) {
       setRatingErrors(errors);
-      setReviewError('Please complete all 4 required rating categories and write your review feedback.');
+      showWarning('Please complete all 4 required rating categories and write your review feedback.');
       return;
     }
 
     try {
       setReviewSubmitting(true);
-      setReviewError(null);
       setRatingErrors({});
 
       const payload: CreateReviewRequest = {
@@ -295,10 +306,10 @@ export const GarageDetailPage: React.FC = () => {
 
       if (editingReviewId) {
         await api.reviews.update(editingReviewId, payload);
-        setActionSuccess('Your review was updated successfully.');
+        showSuccess('Your review was updated successfully.');
       } else {
         await api.reviews.create(garage.id, payload);
-        setActionSuccess('Thank you! Your review has been submitted.');
+        showSuccess('Thank you! Your review has been submitted.');
       }
 
       setIsReviewModalOpen(false);
@@ -306,7 +317,8 @@ export const GarageDetailPage: React.FC = () => {
       fetchReviews(garage.id, 0);
       fetchGarage();
     } catch (err: any) {
-      setReviewError(err.message || 'Failed to submit review. You may have already reviewed this workshop.');
+      const msg = err.message || 'Failed to submit review. You may have already reviewed this workshop.';
+      showError(msg);
     } finally {
       setReviewSubmitting(false);
     }
@@ -322,7 +334,6 @@ export const GarageDetailPage: React.FC = () => {
     setBusinessRegNumber('');
     setClaimDocType('OWNERSHIP_PROOF');
     setClaimFile(null);
-    setClaimError(null);
     setIsClaimModalOpen(true);
   };
 
@@ -332,34 +343,47 @@ export const GarageDetailPage: React.FC = () => {
 
     if (!isAuthenticated) {
       setClaimAuthWarning(true);
-      setClaimError(null);
+      requestAuth({
+        title: 'Sign In Required',
+        message: 'You must be signed in before submitting this claim.',
+        portal: 'garage',
+        actionType: 'CLAIM_GARAGE',
+        returnUrl: window.location.pathname + window.location.search,
+        formState: {
+          claimantName,
+          claimantPhone,
+          claimantEmail,
+          businessRegNumber,
+          claimDocType,
+          claimMessage,
+        },
+      });
       return;
     }
 
     if (!claimMessage.trim()) {
-      setClaimError('Please provide an ownership statement explaining your legal or operational relationship to this workshop.');
+      showWarning('Please provide an ownership statement explaining your legal or operational relationship to this workshop.');
       return;
     }
     if (!claimFile) {
-      setClaimError('Please select and upload a verification document (e.g. Ownership Deed, Electricity/Utility Bill, Trade License, or GST Certificate).');
+      showWarning('Please select and upload a verification document (e.g. Ownership Deed, Electricity/Utility Bill, Trade License, or GST Certificate).');
       return;
     }
     const allowedExtensions = ['.pdf', '.png', '.jpg', '.jpeg'];
     const fileName = claimFile.name.toLowerCase();
     const isAllowedExt = allowedExtensions.some((ext) => fileName.endsWith(ext));
     if (!isAllowedExt) {
-      setClaimError('Invalid file type. Only PDF, JPEG, and PNG documents are accepted for ownership verification.');
+      showError('Invalid file type. Only PDF, JPEG, and PNG documents are accepted for ownership verification.');
       return;
     }
     const MAX_SIZE = 10 * 1024 * 1024; // 10MB
     if (claimFile.size > MAX_SIZE) {
-      setClaimError('File exceeds the maximum allowed size of 10 MB. Please upload a smaller document.');
+      showError('File exceeds the maximum allowed size of 10 MB. Please upload a smaller document.');
       return;
     }
 
     try {
       setClaimSubmitting(true);
-      setClaimError(null);
       await api.claims.submit(garage.id, {
         claimMessage: claimMessage.trim(),
         claimantName: claimantName.trim() || undefined,
@@ -370,9 +394,10 @@ export const GarageDetailPage: React.FC = () => {
         documents: [claimFile],
       });
       setIsClaimModalOpen(false);
-      setActionSuccess('Your ownership claim and verification document have been submitted to administrators for verification. Track review status in My Claims.');
+      showSuccess('Your ownership claim and verification document have been submitted to administrators for verification.');
     } catch (err: any) {
-      setClaimError(err.message || 'Failed to submit ownership claim.');
+      const msg = err.message || 'Failed to submit ownership claim.';
+      showError(msg);
     } finally {
       setClaimSubmitting(false);
     }
@@ -383,14 +408,14 @@ export const GarageDetailPage: React.FC = () => {
     if (!responseText.trim() || responseSubmitting) return;
     try {
       setResponseSubmitting(true);
-      setResponseError(null);
       await api.reviews.respond(reviewId, responseText.trim());
       setRespondingReviewId(null);
       setResponseText('');
-      setActionSuccess('Your response to the customer has been posted.');
+      showSuccess('Your response to the customer has been posted.');
       if (garage) fetchReviews(garage.id, reviewPage);
     } catch (err: any) {
-      setResponseError(err.message || 'Failed to post response.');
+      const msg = err.message || 'Failed to post response.';
+      showError(msg);
     } finally {
       setResponseSubmitting(false);
     }
@@ -399,15 +424,25 @@ export const GarageDetailPage: React.FC = () => {
   // Moderator Delete Review
   const handleDeleteReview = async () => {
     if (!deletingReviewId || deleteSubmitting) return;
+    const confirmed = await confirm({
+      title: 'Moderate and Delete Review?',
+      message: 'Are you sure you want to delete this customer review? It will be permanently removed from the public workshop page and logged in the moderation audit trail.',
+      confirmText: 'Delete Review',
+      variant: 'danger',
+      icon: 'gavel',
+    });
+    if (!confirmed) return;
+
     try {
       setDeleteSubmitting(true);
       await api.admin.softDeleteReview(deletingReviewId, deleteReason.trim() || 'Moderated by admin');
       setDeletingReviewId(null);
       setDeleteReason('');
-      setActionSuccess('Review moderated and deleted.');
+      showSuccess('Review moderated and deleted.');
       if (garage) fetchReviews(garage.id, reviewPage);
     } catch (err: any) {
-      setError(err.message || 'Failed to delete review.');
+      const msg = err.message || 'Failed to delete review.';
+      showError(msg);
     } finally {
       setDeleteSubmitting(false);
     }
@@ -418,7 +453,6 @@ export const GarageDetailPage: React.FC = () => {
     setReportingReview(rev);
     setReportReason('OFFENSIVE_CONTENT');
     setReportDetails('');
-    setReportError(null);
   };
 
   const handleReportSubmit = async (e: React.FormEvent) => {
@@ -426,15 +460,15 @@ export const GarageDetailPage: React.FC = () => {
     if (!reportingReview || !garage || reportSubmitting) return;
     try {
       setReportSubmitting(true);
-      setReportError(null);
       await api.reviews.report(garage.id, reportingReview.id, {
         reportReason,
         details: reportDetails.trim() || undefined,
       });
       setReportingReview(null);
-      setActionSuccess('Your review report has been submitted to platform administrators for investigation.');
+      showSuccess('Your review report has been submitted to platform administrators for investigation.');
     } catch (err: any) {
-      setReportError(err.message || 'Failed to submit review report.');
+      const msg = err.message || 'Failed to submit review report.';
+      showError(msg);
     } finally {
       setReportSubmitting(false);
     }
@@ -502,15 +536,6 @@ export const GarageDetailPage: React.FC = () => {
         <span>&gt;</span>
         <span className="text-white font-semibold">{garage.name}</span>
       </nav>
-
-      {actionSuccess && (
-        <Alert
-          type="success"
-          message={actionSuccess}
-          onClose={() => setActionSuccess(null)}
-          className="mb-6"
-        />
-      )}
 
       {/* Hero Workshop Banner (Stitch autocare_motors_profile_redesign) */}
       <div className="card p-8 mb-8">
@@ -769,8 +794,6 @@ export const GarageDetailPage: React.FC = () => {
               </button>
             </div>
 
-            {reviewsError && <Alert type="error" message={reviewsError} className="mb-4" />}
-
             {reviewsLoading && !reviewsData && (
               <div className="center-loader py-8">
                 <div className="spinner"></div>
@@ -898,9 +921,6 @@ export const GarageDetailPage: React.FC = () => {
                               value={responseText}
                               onChange={(e) => setResponseText(e.target.value)}
                             />
-                            {responseError && (
-                              <p className="text-danger text-xs mb-2">{responseError}</p>
-                            )}
                             <div className="flex gap-2">
                               <button
                                 type="button"
@@ -926,7 +946,6 @@ export const GarageDetailPage: React.FC = () => {
                             onClick={() => {
                               setRespondingReviewId(rev.id);
                               setResponseText('');
-                              setResponseError(null);
                             }}
                           >
                             💬 Respond to this review
@@ -1108,8 +1127,6 @@ export const GarageDetailPage: React.FC = () => {
       >
         <form onSubmit={handleReviewSubmit} className="space-y-4">
 
-          {reviewError && <Alert type="error" message={reviewError} className="mb-3" />}
-
           <p className="text-xs text-secondary">
             Rate your experience across all 4 automotive care pillars:
           </p>
@@ -1278,8 +1295,6 @@ export const GarageDetailPage: React.FC = () => {
         title={`Claim Ownership: ${garage.name}`}
       >
         <form onSubmit={handleClaimSubmit} className="space-y-4">
-
-          {claimError && <Alert type="error" message={claimError} className="mb-3" />}
 
           <div className="bg-elevated p-3 rounded-lg border border-border text-xs text-secondary leading-relaxed">
             <strong className="text-white block mb-1">Ownership Verification Process</strong>
@@ -1507,8 +1522,6 @@ export const GarageDetailPage: React.FC = () => {
               <p className="text-white italic text-2xs line-clamp-3">"{reportingReview.reviewText}"</p>
             </div>
 
-            {reportError && <Alert type="error" message={reportError} className="mb-2" />}
-
             <div>
               <label className="label text-xs">Reason for Reporting</label>
               <select
@@ -1566,9 +1579,7 @@ export const GarageDetailPage: React.FC = () => {
           garage={garage}
           initialFormState={quoteInitialState}
           onSuccess={() => {
-            setActionSuccess(
-              'Your quote request has been submitted to the workshop! You can track its status and communicate with the owner in My Quotes.'
-            );
+            setIsQuoteModalOpen(false);
           }}
         />
       )}

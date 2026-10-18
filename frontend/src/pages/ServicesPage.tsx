@@ -3,9 +3,10 @@ import { Link, useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import type { ServiceDto, GarageSummaryDto } from '../api/types';
 import { GarageCard } from '../components/GarageCard';
-import { Alert } from '../components/Alert';
+import { useToast } from '../context/NotificationContext';
 
 export const ServicesPage: React.FC = () => {
+  const { showError } = useToast();
   const { serviceSlug } = useParams<{ serviceSlug?: string }>();
   const navigate = useNavigate();
 
@@ -15,7 +16,6 @@ export const ServicesPage: React.FC = () => {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [focusedIndex, setFocusedIndex] = useState(-1);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   // Garages for selected service
   const [offeringGarages, setOfferingGarages] = useState<GarageSummaryDto[]>([]);
@@ -39,13 +39,13 @@ export const ServicesPage: React.FC = () => {
         const data = await api.services.list();
         setServices(data || []);
       } catch (err: any) {
-        setError(err.message || 'Failed to load services catalogue');
+        showError(err.message || 'Failed to load services catalogue');
       } finally {
         setLoading(false);
       }
     }
     loadServices();
-  }, []);
+  }, [showError]);
 
   // Currently selected service (if URL parameter serviceSlug is set)
   const selectedService = useMemo(() => {
@@ -262,8 +262,6 @@ export const ServicesPage: React.FC = () => {
           </div>
         )}
       </div>
-
-      {error && <Alert type="error" message={error} className="mb-6" />}
 
       {/* Detail View: When a specific service is selected */}
       {selectedService ? (

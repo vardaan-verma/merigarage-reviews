@@ -2,11 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api/client';
 import type { GarageClaimDto } from '../api/types';
-import { Alert } from '../components/Alert';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/NotificationContext';
 
 export const MyClaimsPage: React.FC = () => {
   const { refreshUser } = useAuth();
+  const { showError, showSuccess } = useToast();
   const [claims, setClaims] = useState<GarageClaimDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -21,11 +22,13 @@ export const MyClaimsPage: React.FC = () => {
         await refreshUser().catch(() => {});
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to fetch ownership claims');
+      const msg = err.message || 'Failed to fetch ownership claims';
+      setError(msg);
+      showError(msg);
     } finally {
       setLoading(false);
     }
-  }, [refreshUser]);
+  }, [refreshUser, showError]);
 
   useEffect(() => {
     let isMounted = true;
@@ -40,7 +43,9 @@ export const MyClaimsPage: React.FC = () => {
         }
       } catch (err: any) {
         if (isMounted) {
-          setError(err.message || 'Failed to fetch ownership claims');
+          const msg = err.message || 'Failed to fetch ownership claims';
+          setError(msg);
+          showError(msg);
         }
       } finally {
         if (isMounted) {
@@ -62,8 +67,9 @@ export const MyClaimsPage: React.FC = () => {
     try {
       setDownloadingDocId(docId);
       await api.claims.downloadDocument(claimId, docId, fileName);
+      showSuccess(`Document "${fileName}" downloaded.`);
     } catch (err: any) {
-      alert(err.message || 'Failed to download document');
+      showError(err.message || 'Failed to download verification document.');
     } finally {
       setDownloadingDocId(null);
     }
@@ -134,8 +140,8 @@ export const MyClaimsPage: React.FC = () => {
       </div>
 
       {error && (
-        <div className="card p-6 border-danger mb-6 text-center">
-          <Alert type="error" message={error} className="mb-4 text-left" />
+        <div className="card p-6 border-danger/30 mb-6 text-center bg-surface-raised">
+          <p className="text-secondary text-sm mb-3">{error}</p>
           <button type="button" onClick={() => loadClaims(false)} className="btn btn-primary btn-sm">
             Retry Loading Claims
           </button>

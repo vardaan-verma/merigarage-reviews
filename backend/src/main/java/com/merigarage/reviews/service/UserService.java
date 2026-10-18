@@ -27,6 +27,8 @@ import java.util.UUID;
 @Transactional(readOnly = true)
 public class UserService {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(UserService.class);
+
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final UserRoleRepository userRoleRepository;
@@ -122,22 +124,6 @@ public class UserService {
             existingUser.setFullName(payload.name().trim());
         }
 
-        // Respect user customization:
-        // If user has no photo at all, import Google photo initially if available.
-        // If user already has a photo (custom uploaded or previously imported), preserve it!
-        boolean hasExistingPhoto = (existingUser.getProfilePhotoStorageKey() != null && !existingUser.getProfilePhotoStorageKey().isBlank())
-                || (existingUser.getProfilePhotoUrl() != null && !existingUser.getProfilePhotoUrl().isBlank())
-                || Boolean.TRUE.equals(existingUser.getIsCustomPhoto());
-
-        if (!hasExistingPhoto && payload.picture() != null && !payload.picture().isBlank()) {
-            String storageKey = googlePhotoImportService.importGooglePhoto(payload.picture(), existingUser.getId());
-            if (storageKey != null) {
-                existingUser.setProfilePhotoStorageKey(storageKey);
-                existingUser.setProfilePhotoUrl("/api/users/" + existingUser.getId() + "/photo");
-                existingUser.setIsCustomPhoto(false);
-            }
-        }
-
         return userRepository.save(existingUser);
     }
 
@@ -168,17 +154,42 @@ public class UserService {
         UserRole mapping = new UserRole(savedUser, roleEntity);
         userRoleRepository.save(mapping);
 
-        if (payload.picture() != null && !payload.picture().isBlank()) {
-            String storageKey = googlePhotoImportService.importGooglePhoto(payload.picture(), savedUser.getId());
-            if (storageKey != null) {
-                savedUser.setProfilePhotoStorageKey(storageKey);
-                savedUser.setProfilePhotoUrl("/api/users/" + savedUser.getId() + "/photo");
-                savedUser.setIsCustomPhoto(false);
-                savedUser = userRepository.save(savedUser);
-            }
+        return savedUser;
+    }
+
+    @Transactional
+    public User tryImportInitialGooglePhoto(Long userId, String pictureUrl) {
+        if (userId == null || pictureUrl == null || pictureUrl.isBlank()) {
+            return userId != null ? findById(userId) : null;
         }
 
-        return savedUser;
+        User user = findById(userId);
+
+        // Respect user customization:
+        // A user-uploaded custom photo must NOT be overwritten during subsequent Google logins.
+        // Also if user already has an imported or existing photo, preserve it.
+        boolean hasExistingPhoto = Boolean.TRUE.equals(user.getIsCustomPhoto())
+                || (user.getProfilePhotoStorageKey() != null && !user.getProfilePhotoStorageKey().isBlank())
+                || (user.getProfilePhotoUrl() != null && !user.getProfilePhotoUrl().isBlank());
+
+        if (hasExistingPhoto) {
+            log.info("User {} already has a profile photo; skipping Google photo import to preserve existing photo.", userId);
+            return user;
+        }
+
+        try {
+            String storageKey = googlePhotoImportService.importGooglePhoto(pictureUrl, user.getId());
+            if (storageKey != null) {
+                user.setProfilePhotoStorageKey(storageKey);
+                user.setProfilePhotoUrl("/api/users/" + user.getId() + "/photo");
+                user.setIsCustomPhoto(false);
+                return userRepository.save(user);
+            }
+        } catch (Throwable t) {
+            log.warn("Safe diagnostic: non-fatal Google photo import failure for user {}: {}", userId, t.getMessage());
+        }
+
+        return user;
     }
 
     @Transactional

@@ -11,6 +11,7 @@ import {
   validateProductionOrigin,
   type QrUrlConfig,
 } from '../utils/qrPosterConfig';
+import { useToast } from '../context/NotificationContext';
 
 interface GarageReviewPosterCardProps {
   garage: GarageDetailDto | GarageSummaryDto | { id: number; name: string; slug: string; city?: string; state?: string; isVerified?: boolean };
@@ -23,6 +24,7 @@ export const GarageReviewPosterCard: React.FC<GarageReviewPosterCardProps> = ({
   onClose,
   isModal = false,
 }) => {
+  const { showWarning, showSuccess } = useToast();
   const [mode, setMode] = useState<'production' | 'development'>('production');
   const [useShortRedirect, setUseShortRedirect] = useState(false);
   const [customProdUrl, setCustomProdUrl] = useState<string>(getProductionBaseUrl());
@@ -81,13 +83,14 @@ export const GarageReviewPosterCard: React.FC<GarageReviewPosterCardProps> = ({
   const handleDownload = () => {
     if (!posterResult) return;
     downloadPosterFile(posterResult.dataUrl, posterResult.fileName);
+    showSuccess('Poster downloaded successfully.');
   };
 
   const handlePrint = () => {
     if (!posterResult) return;
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
-      alert('Please allow popups to open the print dialog.');
+      showWarning('Please allow browser popups to open the print dialog.');
       return;
     }
 

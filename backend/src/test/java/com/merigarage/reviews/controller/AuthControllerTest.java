@@ -515,4 +515,259 @@ class AuthControllerTest {
                         .content(jsonBody))
                 .andExpect(status().isBadRequest());
     }
+
+    @Test
+    void googleAuth_CustomerPortal_Success_ReturnsRoleUserAndSetsSession() throws Exception {
+        String unique = UUID.randomUUID().toString().substring(0, 8);
+        String email = "google.cust." + unique + "@example.com";
+        String credential = "test_google_token:" + email + ":Customer Driver";
+
+        String jsonBody = """
+                {
+                    "credential": "%s",
+                    "portal": "customer"
+                }
+                """.formatted(credential);
+
+        MvcResult result = mockMvc.perform(post("/api/auth/google")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value(email))
+                .andExpect(jsonPath("$.roles[0]").value("ROLE_USER"))
+                .andReturn();
+
+        MockHttpSession session = (MockHttpSession) result.getRequest().getSession(false);
+        assertThat(session).isNotNull();
+
+        mockMvc.perform(get("/api/auth/me").session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value(email));
+    }
+
+    @Test
+    void googleAuth_GaragePortal_Success_ReturnsRoleGarageOwnerAndSetsSession() throws Exception {
+        String unique = UUID.randomUUID().toString().substring(0, 8);
+        String email = "google.owner." + unique + "@example.com";
+
+        // Pre-register existing garage owner
+        userService.registerUser(new RegisterUserRequest(email, "Password123!", "Garage Boss", "9876543210", null, null, RoleName.ROLE_GARAGE_OWNER));
+
+        String credential = "test_google_token:" + email + ":Garage Boss";
+        String jsonBody = """
+                {
+                    "credential": "%s",
+                    "portal": "garage"
+                }
+                """.formatted(credential);
+
+        MvcResult result = mockMvc.perform(post("/api/auth/google")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value(email))
+                .andExpect(jsonPath("$.roles[0]").value("ROLE_GARAGE_OWNER"))
+                .andReturn();
+
+        MockHttpSession session = (MockHttpSession) result.getRequest().getSession(false);
+        assertThat(session).isNotNull();
+
+        mockMvc.perform(get("/api/auth/me").session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value(email))
+                .andExpect(jsonPath("$.roles[0]").value("ROLE_GARAGE_OWNER"));
+    }
+
+    @Test
+    void googleAuth_ProfilePhotoAvailable_ImportsPhotoAndSetsPhotoUrl() throws Exception {
+        String unique = UUID.randomUUID().toString().substring(0, 8);
+        String email = "google.photo." + unique + "@example.com";
+        String credential = "test_google_token:" + email + ":Photo User:mock_photo:avatar.png";
+
+        String jsonBody = """
+                {
+                    "credential": "%s",
+                    "portal": "customer"
+                }
+                """.formatted(credential);
+
+        MvcResult result = mockMvc.perform(post("/api/auth/google")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value(email))
+                .andExpect(jsonPath("$.profilePhotoUrl").isNotEmpty())
+                .andReturn();
+
+        User user = userRepository.findByEmail(email).orElseThrow();
+        assertThat(user.getProfilePhotoStorageKey()).isNotNull();
+        assertThat(user.getProfilePhotoUrl()).startsWith("/api/users/" + user.getId() + "/photo");
+        assertThat(user.getIsCustomPhoto()).isFalse();
+
+        MockHttpSession session = (MockHttpSession) result.getRequest().getSession(false);
+        assertThat(session).isNotNull();
+    }
+
+    @Test
+    void googleAuth_ProfilePhotoAbsent_AuthenticatesSuccessfullyWithNullPhotoUrl() throws Exception {
+        String unique = UUID.randomUUID().toString().substring(0, 8);
+        String email = "google.nophoto." + unique + "@example.com";
+        String credential = "test_google_token:" + email + ":NoPhoto User";
+
+        String jsonBody = """
+                {
+                    "credential": "%s",
+                    "portal": "customer"
+                }
+                """.formatted(credential);
+
+        MvcResult result = mockMvc.perform(post("/api/auth/google")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value(email))
+                .andExpect(jsonPath("$.profilePhotoUrl").isEmpty())
+                .andReturn();
+
+        User user = userRepository.findByEmail(email).orElseThrow();
+        assertThat(user.getProfilePhotoStorageKey()).isNull();
+        assertThat(user.getProfilePhotoUrl()).isNull();
+
+        MockHttpSession session = (MockHttpSession) result.getRequest().getSession(false);
+        assertThat(session).isNotNull();
+    }
+
+    @Test
+    void googleAuth_PhotoDownloadFailure_DoesNotPreventAuthentication() throws Exception {
+        String unique = UUID.randomUUID().toString().substring(0, 8);
+        String email = "google.badphoto." + unique + "@example.com";
+        // Rejected untrusted non-Google host will cause importGooglePhoto to safely fail
+        String credential = "test_google_token:" + email + ":BadPhoto User:https://untrusted-attacker-site.com/avatar.jpg";
+
+        String jsonBody = """
+                {
+                    "credential": "%s",
+                    "portal": "customer"
+                }
+                """.formatted(credential);
+
+        MvcResult result = mockMvc.perform(post("/api/auth/google")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value(email))
+                .andReturn();
+
+        // User authentication and session must remain completely intact!
+        MockHttpSession session = (MockHttpSession) result.getRequest().getSession(false);
+        assertThat(session).isNotNull();
+
+        mockMvc.perform(get("/api/auth/me").session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value(email));
+
+        User user = userRepository.findByEmail(email).orElseThrow();
+        assertThat(user.getProfilePhotoStorageKey()).isNull();
+    }
+
+    @Test
+    void googleAuth_ExistingCustomPhoto_NotOverwrittenOnSubsequentGoogleLogin() throws Exception {
+        String unique = UUID.randomUUID().toString().substring(0, 8);
+        String email = "google.customphoto." + unique + "@example.com";
+
+        User existing = userService.registerUser(new RegisterUserRequest(email, "Password123!", "Custom Photo User", null));
+        existing.setProfilePhotoStorageKey("users/" + existing.getId() + "/profile/custom-avatar.jpg");
+        existing.setProfilePhotoUrl("/api/users/" + existing.getId() + "/photo");
+        existing.setIsCustomPhoto(true);
+        userRepository.save(existing);
+
+        String credential = "test_google_token:" + email + ":Custom Photo User:mock_photo:google-replacement.png";
+        String jsonBody = """
+                {
+                    "credential": "%s",
+                    "portal": "customer"
+                }
+                """.formatted(credential);
+
+        MvcResult result = mockMvc.perform(post("/api/auth/google")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value(email))
+                .andReturn();
+
+        // Custom photo must be strictly preserved!
+        User reloaded = userRepository.findByEmail(email).orElseThrow();
+        assertThat(reloaded.getProfilePhotoStorageKey()).isEqualTo("users/" + existing.getId() + "/profile/custom-avatar.jpg");
+        assertThat(reloaded.getIsCustomPhoto()).isTrue();
+
+        MockHttpSession session = (MockHttpSession) result.getRequest().getSession(false);
+        assertThat(session).isNotNull();
+    }
+
+    @Test
+    void googleAuth_CustomerAttemptingGaragePortal_ForbiddenWithExactMessageAndNoSession() throws Exception {
+        String unique = UUID.randomUUID().toString().substring(0, 8);
+        String email = "google.cust.garage." + unique + "@example.com";
+
+        // Register as vehicle owner (ROLE_USER)
+        userService.registerUser(new RegisterUserRequest(email, "Password123!", "Motorist Only", null, null, null, RoleName.ROLE_USER));
+
+        String credential = "test_google_token:" + email + ":Motorist Only";
+        String jsonBody = """
+                {
+                    "credential": "%s",
+                    "portal": "garage"
+                }
+                """.formatted(credential);
+
+        MvcResult result = mockMvc.perform(post("/api/auth/google")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonBody))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("Forbidden"))
+                .andExpect(jsonPath("$.message").value("It seems like you are a customer. Please log in through the Customer Portal."))
+                .andReturn();
+
+        MockHttpSession session = (MockHttpSession) result.getRequest().getSession(false);
+        if (session != null) {
+            assertThat(session.getAttribute("SPRING_SECURITY_CONTEXT")).isNull();
+        }
+
+        mockMvc.perform(get("/api/auth/me").session(session != null ? session : new MockHttpSession()))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void googleAuth_GarageOwnerAttemptingCustomerPortal_ForbiddenWithExactMessageAndNoSession() throws Exception {
+        String unique = UUID.randomUUID().toString().substring(0, 8);
+        String email = "google.garage.cust." + unique + "@example.com";
+
+        // Register as garage owner (ROLE_GARAGE_OWNER)
+        userService.registerUser(new RegisterUserRequest(email, "Password123!", "Workshop Owner", null, null, null, RoleName.ROLE_GARAGE_OWNER));
+
+        String credential = "test_google_token:" + email + ":Workshop Owner";
+        String jsonBody = """
+                {
+                    "credential": "%s",
+                    "portal": "customer"
+                }
+                """.formatted(credential);
+
+        MvcResult result = mockMvc.perform(post("/api/auth/google")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonBody))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("Forbidden"))
+                .andExpect(jsonPath("$.message").value("It seems like you are a garage owner. Please log in using Garage Login."))
+                .andReturn();
+
+        MockHttpSession session = (MockHttpSession) result.getRequest().getSession(false);
+        if (session != null) {
+            assertThat(session.getAttribute("SPRING_SECURITY_CONTEXT")).isNull();
+        }
+
+        mockMvc.perform(get("/api/auth/me").session(session != null ? session : new MockHttpSession()))
+                .andExpect(status().isUnauthorized());
+    }
 }

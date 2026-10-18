@@ -2590,20 +2590,24 @@ p {
   border-radius: var(--radius-sm);
 }
 
-/* Modals & Dialogs */
+/* Modals & Dialogs — Centered Top-Middle Architecture */
 .modal-overlay,
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background-color: rgba(0, 0, 0, 0.82);
+  background-color: rgba(0, 0, 0, 0.78);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   z-index: 1000;
-  padding: 1.5rem 1rem;
+  padding: clamp(2rem, 7vh, 4.5rem) 1rem 2rem;
   overflow-y: auto;
+}
+
+.modal-overlay-elevated {
+  z-index: 2000 !important;
 }
 
 .modal-content,
@@ -2613,13 +2617,25 @@ p {
   border-radius: var(--radius-xl);
   max-width: 600px;
   width: 100%;
-  max-height: 90vh;
+  max-height: calc(100vh - clamp(4rem, 14vh, 9rem));
   display: flex;
   flex-direction: column;
   overflow: hidden;
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.9);
   position: relative;
-  margin: auto;
+  margin: 0 auto;
+  animation: modalSlideDownFade 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes modalSlideDownFade {
+  from {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .modal-sm { max-width: 440px; }
@@ -2627,6 +2643,84 @@ p {
 .modal-lg { max-width: 780px; }
 .modal-xl { max-width: 960px; }
 .modal-2xl { max-width: 1180px; width: 95vw; }
+
+/* Centralized Toast System */
+.toast-container {
+  position: fixed;
+  top: 1.25rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  max-width: 500px;
+  padding: 0 1rem;
+  pointer-events: none;
+}
+
+.toast-item {
+  pointer-events: auto;
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  padding: 0.85rem 1.15rem;
+  border-radius: var(--radius-md);
+  background-color: #1c1b1b;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.85), 0 4px 12px rgba(0, 0, 0, 0.6);
+  color: #ffffff;
+  animation: toastSlideDownFade 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.toast-item:focus {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+.toast-item.toast-success {
+  border-left: 4px solid var(--success);
+  border-color: rgba(34, 197, 94, 0.3);
+}
+
+.toast-item.toast-error {
+  border-left: 4px solid var(--primary);
+  border-color: rgba(235, 22, 32, 0.35);
+}
+
+.toast-item.toast-warning {
+  border-left: 4px solid #f59e0b;
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+.toast-item.toast-info {
+  border-left: 4px solid #3b82f6;
+  border-color: rgba(59, 130, 246, 0.35);
+}
+
+@keyframes toastSlideDownFade {
+  from {
+    opacity: 0;
+    transform: translateY(-16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal-dialog,
+  .modal-content,
+  .toast-item {
+    animation: none !important;
+    transition: none !important;
+  }
+}
 
 .poster-layout-grid {
   display: grid;
@@ -3637,4 +3731,505 @@ p {
   color: #ffffff;
   border-color: rgba(204, 203, 204, 0.5);
   transform: translateY(-1px);
+}
+
+/* ==========================================================================
+   Profile Page — Scoped Component Styles (pp-*)
+   Matches Garage Owner / Vehicle Owner / Lead Administrator reference designs.
+   ========================================================================== */
+
+/* Page wrapper */
+.pp-page {
+  padding-top: 2rem;
+  padding-bottom: 3rem;
+}
+
+/* Page header row */
+.pp-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.pp-page-title {
+  font-size: 1.9rem;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+}
+
+.pp-page-subtitle {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-top: 0.25rem;
+}
+
+.pp-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-shrink: 0;
+}
+
+/* Profile card */
+.pp-profile-card {
+  padding: 1.5rem;
+  margin-bottom: 1.25rem;
+}
+
+/* Identity row: avatar on left, info on right */
+.pp-identity-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.25rem;
+}
+
+/* Avatar */
+.pp-avatar-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.pp-avatar-ring {
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 2px solid var(--primary);
+  box-shadow: 0 4px 18px rgba(235, 22, 32, 0.3);
+  background-color: #0e0e0e;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pp-avatar-ring > div {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.pp-avatar-preview-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background-color: #f59e0b;
+  color: #1a1100;
+  font-size: 0.6rem;
+  font-weight: 800;
+  padding: 1px 5px;
+  border-radius: 9999px;
+  z-index: 10;
+  letter-spacing: 0.04em;
+}
+
+/* Identity info column */
+.pp-identity-info {
+  flex: 1;
+  min-width: 220px;
+}
+
+.pp-name-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
+.pp-name {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.pp-role-badge {
+  font-size: 0.65rem !important;
+  flex-shrink: 0;
+}
+
+.pp-contact-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-bottom: 0.85rem;
+}
+
+.pp-contact-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.pp-contact-icon {
+  font-size: 14px !important;
+  color: var(--primary);
+  flex-shrink: 0;
+}
+
+.pp-contact-text {
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+}
+
+.pp-contact-missing {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* Photo controls */
+.pp-photo-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.pp-photo-hint {
+  font-size: 0.675rem;
+  color: var(--text-muted);
+}
+
+/* Roles & permissions section — two columns */
+.pp-roles-section {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+  padding-top: 1.1rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.pp-section-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin-bottom: 0.6rem;
+}
+
+.pp-badges-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.pp-no-data {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* Section cards (Vehicles + Quick Actions) */
+.pp-section-card {
+  padding: 1.5rem;
+}
+
+.pp-section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 1.1rem;
+}
+
+.pp-section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #ffffff;
+  margin-bottom: 0.25rem;
+}
+
+.pp-section-icon {
+  font-size: 20px !important;
+  color: var(--primary);
+}
+
+.pp-section-subtitle {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+/* Empty vehicles state */
+.pp-empty-vehicles {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 2.5rem 1.5rem;
+  border: 1.5px dashed var(--border-color);
+  border-radius: var(--radius-lg);
+  background-color: var(--bg-surface);
+}
+
+.pp-empty-icon {
+  font-size: 3rem !important;
+  color: var(--text-muted);
+  margin-bottom: 0.65rem;
+}
+
+.pp-empty-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin-bottom: 0.35rem;
+}
+
+.pp-empty-desc {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  max-width: 340px;
+  line-height: 1.5;
+}
+
+/* Vehicle rows */
+.pp-vehicle-row {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1rem;
+  transition: border-color 0.2s ease;
+}
+
+.pp-vehicle-row:hover {
+  border-color: rgba(204, 203, 204, 0.3);
+}
+
+.pp-vehicle-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.pp-vehicle-name-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.2rem;
+}
+
+.pp-vehicle-name {
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.pp-vehicle-reg {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--primary);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.pp-vehicle-no-reg {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-style: italic;
+  font-family: var(--font-mono);
+}
+
+.pp-vehicle-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+/* History accordion */
+.pp-history-panel {
+  margin-top: 0.85rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid rgba(204, 203, 204, 0.12);
+}
+
+.pp-history-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin-bottom: 0.5rem;
+}
+
+.pp-history-empty {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* Quick Actions section title */
+.pp-qa-title {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #ffffff;
+  margin-bottom: 1rem;
+}
+
+/* Quick Actions grid — default 2 col */
+.pp-qa-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.85rem;
+}
+
+/* Admin variant — 3 col */
+.pp-qa-grid-admin {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+/* Individual action card */
+.pp-qa-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  border-left: 2.5px solid var(--primary);
+  padding: 1rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+  text-decoration: none;
+  cursor: pointer;
+  min-height: 130px;
+}
+
+.pp-qa-card:hover {
+  border-color: var(--primary);
+  box-shadow: 0 4px 18px rgba(235, 22, 32, 0.18);
+  transform: translateY(-2px);
+}
+
+/* Admin console card — span 2 cols in the 3-col grid */
+.pp-qa-grid-admin .pp-qa-card-admin {
+  grid-column: span 2 / span 2;
+}
+
+.pp-qa-card-top {
+  flex: 1;
+}
+
+.pp-qa-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-bottom: 0.5rem;
+}
+
+.pp-qa-icon {
+  font-size: 1.25rem !important;
+  color: var(--primary);
+  flex-shrink: 0;
+}
+
+.pp-qa-card-title {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #ffffff;
+  line-height: 1.25;
+}
+
+.pp-qa-card:hover .pp-qa-card-title {
+  color: var(--primary);
+}
+
+.pp-qa-card-desc {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: 0.65rem;
+}
+
+.pp-qa-card-link {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--primary);
+  margin-top: auto;
+}
+
+/* Responsive: profile page */
+@media (max-width: 768px) {
+  .pp-page-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .pp-identity-row {
+    gap: 1rem;
+  }
+
+  .pp-avatar-ring {
+    width: 72px;
+    height: 72px;
+  }
+
+  .pp-name {
+    font-size: 1.15rem;
+  }
+
+  .pp-roles-section {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .pp-qa-grid,
+  .pp-qa-grid-admin {
+    grid-template-columns: 1fr;
+  }
+
+  .pp-qa-grid-admin .pp-qa-card-admin {
+    grid-column: span 1 / span 1;
+  }
+
+  .pp-vehicle-main {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 480px) {
+  .pp-page-title {
+    font-size: 1.5rem;
+  }
+
+  .pp-header-actions {
+    flex-wrap: wrap;
+  }
+
+  .pp-photo-controls {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .pp-avatar-ring {
+    width: 64px;
+    height: 64px;
+  }
+}
+
+@media (min-width: 769px) and (max-width: 1024px) {
+  .pp-qa-grid-admin {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .pp-qa-grid-admin .pp-qa-card-admin {
+    grid-column: span 2 / span 2;
+  }
 }

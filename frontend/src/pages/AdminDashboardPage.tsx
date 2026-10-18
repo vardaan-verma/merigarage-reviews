@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/NotificationContext';
 import type {
   GarageSummaryDto,
   GarageProfileEditDto,
@@ -24,7 +25,6 @@ import type {
   ReviewReportDto,
   ReviewReportStatus,
 } from '../api/types';
-import { Alert } from '../components/Alert';
 import { Modal } from '../components/Modal';
 import { AdminSearchBar } from '../components/AdminSearchBar';
 import { GarageReviewPosterModal } from '../components/GarageReviewPosterModal';
@@ -46,6 +46,7 @@ type AdminTab =
 
 export const AdminDashboardPage: React.FC = () => {
   const { user, hasRole, hasPermission } = useAuth();
+  const { showSuccess, showError, showWarning } = useToast();
 
   const isAdmin = hasRole('ROLE_ADMIN');
   const hasExplicitPerms = !!(user?.permissions && user.permissions.length > 0);
@@ -74,30 +75,24 @@ export const AdminDashboardPage: React.FC = () => {
 
   const [showPlatformFeeds, setShowPlatformFeeds] = useState(false);
 
-  // Global feedback
-  const [globalError, setGlobalError] = useState<string | null>(null);
-  const [globalSuccess, setGlobalSuccess] = useState<string | null>(null);
-
   // -------------------------------------------------------------
   // TAB 1: Overview & Metrics
   // -------------------------------------------------------------
   const [overviewMetrics, setOverviewMetrics] = useState<AdminOverviewMetricsDto | null>(null);
   const [loadingOverview, setLoadingOverview] = useState(false);
-  const [overviewError, setOverviewError] = useState<string | null>(null);
 
   const fetchOverview = useCallback(async () => {
     if (!isAdmin) return;
     try {
       setLoadingOverview(true);
-      setOverviewError(null);
       const data = await api.admin.getOverview();
       setOverviewMetrics(data);
     } catch (err: any) {
-      setOverviewError(err.message || 'Failed to load platform overview metrics');
+      showError(err.message || 'Failed to load platform overview metrics');
     } finally {
       setLoadingOverview(false);
     }
-  }, [isAdmin]);
+  }, [isAdmin, showError]);
 
   // -------------------------------------------------------------
   // TAB 2: User Management
@@ -111,7 +106,6 @@ export const AdminDashboardPage: React.FC = () => {
     last: true,
   });
   const [loadingUsers, setLoadingUsers] = useState(false);
-  const [usersError, setUsersError] = useState<string | null>(null);
   const [userSearch, setUserSearch] = useState('');
   const [userRoleFilter, setUserRoleFilter] = useState('');
   const [userStatusFilter, setUserStatusFilter] = useState('');
@@ -128,7 +122,6 @@ export const AdminDashboardPage: React.FC = () => {
   const [userStatusReason, setUserStatusReason] = useState('');
   const [submittingUserStatus, setSubmittingUserStatus] = useState(false);
   const [statusModalOpen, setStatusModalOpen] = useState(false);
-  const [statusModalError, setStatusModalError] = useState<string | null>(null);
 
   // User primary role switch modal
   const [roleSwitchUser, setRoleSwitchUser] = useState<AdminUserSummaryDto | null>(null);
@@ -136,13 +129,11 @@ export const AdminDashboardPage: React.FC = () => {
   const [roleSwitchReason, setRoleSwitchReason] = useState('');
   const [submittingRoleSwitch, setSubmittingRoleSwitch] = useState(false);
   const [roleSwitchModalOpen, setRoleSwitchModalOpen] = useState(false);
-  const [roleSwitchError, setRoleSwitchError] = useState<string | null>(null);
 
   const fetchUsers = useCallback(async (page: number = userPage) => {
     if (!canManageUsers) return;
     try {
       setLoadingUsers(true);
-      setUsersError(null);
       const res = await api.admin.searchUsers({
         search: userSearch.trim() || undefined,
         role: userRoleFilter || undefined,
@@ -153,11 +144,11 @@ export const AdminDashboardPage: React.FC = () => {
       setUsersData(res);
       setUserPage(res.page);
     } catch (err: any) {
-      setUsersError(err.message || 'Failed to load user records');
+      showError(err.message || 'Failed to load user records');
     } finally {
       setLoadingUsers(false);
     }
-  }, [canManageUsers, userPage, userSearch, userRoleFilter, userStatusFilter]);
+  }, [canManageUsers, userPage, userSearch, userRoleFilter, userStatusFilter, showError]);
 
   const handleInspectUser = async (userId: number) => {
     try {
@@ -166,7 +157,7 @@ export const AdminDashboardPage: React.FC = () => {
       const detail = await api.admin.getUserDetail(userId);
       setSelectedUserDetail(detail);
     } catch (err: any) {
-      setGlobalError(err.message || 'Failed to fetch user details');
+      showError(err.message || 'Failed to fetch user details');
       setUserModalOpen(false);
     } finally {
       setLoadingUserDetail(false);
@@ -177,29 +168,28 @@ export const AdminDashboardPage: React.FC = () => {
     setStatusChangeUser(u);
     setTargetUserStatus(u.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE');
     setUserStatusReason('');
-    setStatusModalError(null);
     setStatusModalOpen(true);
   };
 
   const handleConfirmStatusChange = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!statusChangeUser || !userStatusReason.trim()) {
-      setStatusModalError('Please specify the justification for this account status change.');
+      showWarning('Please specify the justification for this account status change.');
       return;
     }
     try {
       setSubmittingUserStatus(true);
-      setStatusModalError(null);
       await api.admin.updateUserStatus(statusChangeUser.id, {
         status: targetUserStatus,
         reason: userStatusReason.trim(),
       });
       setStatusModalOpen(false);
-      setGlobalSuccess(`Successfully updated status for ${statusChangeUser.fullName} to ${targetUserStatus}.`);
+      const msg = `Successfully updated status for ${statusChangeUser.fullName} to ${targetUserStatus}.`;
+      showSuccess(msg);
       fetchUsers();
       if (overviewMetrics) fetchOverview();
     } catch (err: any) {
-      setStatusModalError(err.message || 'Failed to update user status');
+      showError(err.message || 'Failed to update user status');
     } finally {
       setSubmittingUserStatus(false);
     }
@@ -210,7 +200,6 @@ export const AdminDashboardPage: React.FC = () => {
     const isCurrentlyGarage = u.roles.includes('ROLE_GARAGE_OWNER');
     setTargetPrimaryRole(isCurrentlyGarage ? 'ROLE_USER' : 'ROLE_GARAGE_OWNER');
     setRoleSwitchReason('');
-    setRoleSwitchError(null);
     setRoleSwitchModalOpen(true);
   };
 
@@ -218,29 +207,27 @@ export const AdminDashboardPage: React.FC = () => {
     e.preventDefault();
     if (!roleSwitchUser) return;
     if (!roleSwitchReason.trim()) {
-      setRoleSwitchError('Please provide an administrative audit justification for changing this account role.');
+      showWarning('Please provide an administrative audit justification for changing this account role.');
       return;
     }
     try {
       setSubmittingRoleSwitch(true);
-      setRoleSwitchError(null);
       const updatedDetail = await api.admin.switchPrimaryRole(roleSwitchUser.id, {
         targetRole: targetPrimaryRole,
         reason: roleSwitchReason.trim(),
       });
       setRoleSwitchModalOpen(false);
-      setGlobalSuccess(
-        `Successfully updated primary role of ${roleSwitchUser.fullName} to ${
-          targetPrimaryRole === 'ROLE_GARAGE_OWNER' ? 'Garage Owner (ROLE_GARAGE_OWNER)' : 'Vehicle Owner (ROLE_USER)'
-        }.`
-      );
+      const msg = `Successfully updated primary role of ${roleSwitchUser.fullName} to ${
+        targetPrimaryRole === 'ROLE_GARAGE_OWNER' ? 'Garage Owner (ROLE_GARAGE_OWNER)' : 'Vehicle Owner (ROLE_USER)'
+      }.`;
+      showSuccess(msg);
       fetchUsers();
       if (selectedUserDetail && selectedUserDetail.user.id === roleSwitchUser.id) {
         setSelectedUserDetail(updatedDetail);
       }
       if (overviewMetrics) fetchOverview();
     } catch (err: any) {
-      setRoleSwitchError(err.message || 'Failed to switch user primary role');
+      showError(err.message || 'Failed to switch user primary role');
     } finally {
       setSubmittingRoleSwitch(false);
     }
@@ -258,7 +245,6 @@ export const AdminDashboardPage: React.FC = () => {
     last: true,
   });
   const [loadingAllGarages, setLoadingAllGarages] = useState(false);
-  const [allGaragesError, setAllGaragesError] = useState<string | null>(null);
   const [garageSearch, setGarageSearch] = useState('');
   const [garageStatusFilter, setGarageStatusFilter] = useState('');
   const [garageVerifiedFilter, setGarageVerifiedFilter] = useState('');
@@ -275,7 +261,6 @@ export const AdminDashboardPage: React.FC = () => {
     if (!canApproveGarages) return;
     try {
       setLoadingAllGarages(true);
-      setAllGaragesError(null);
       const res = await api.admin.searchAllGarages({
         search: garageSearch.trim() || undefined,
         status: garageStatusFilter || undefined,
@@ -287,11 +272,11 @@ export const AdminDashboardPage: React.FC = () => {
       setAllGaragesData(res);
       setGaragePage(res.page);
     } catch (err: any) {
-      setAllGaragesError(err.message || 'Failed to load workshop directory');
+      showError(err.message || 'Failed to load workshop directory');
     } finally {
       setLoadingAllGarages(false);
     }
-  }, [canApproveGarages, garagePage, garageSearch, garageStatusFilter, garageVerifiedFilter, garageCityFilter]);
+  }, [canApproveGarages, garagePage, garageSearch, garageStatusFilter, garageVerifiedFilter, garageCityFilter, showError]);
 
   const handleInspectGarage = async (garageId: number) => {
     try {
@@ -300,7 +285,7 @@ export const AdminDashboardPage: React.FC = () => {
       const detail = await api.admin.getGarageDetail(garageId);
       setSelectedGarageDetail(detail);
     } catch (err: any) {
-      setGlobalError(err.message || 'Failed to fetch workshop details');
+      showError(err.message || 'Failed to fetch workshop details');
       setGarageModalOpen(false);
     } finally {
       setLoadingGarageDetail(false);
@@ -319,7 +304,6 @@ export const AdminDashboardPage: React.FC = () => {
     last: true,
   });
   const [loadingLeads, setLoadingLeads] = useState(false);
-  const [leadsError, setLeadsError] = useState<string | null>(null);
   const [leadTypeFilter, setLeadTypeFilter] = useState('');
   const [leadSearch, setLeadSearch] = useState('');
   const [leadCityFilter, setLeadCityFilter] = useState('');
@@ -330,7 +314,6 @@ export const AdminDashboardPage: React.FC = () => {
     if (!canAccessLeads) return;
     try {
       setLoadingLeads(true);
-      setLeadsError(null);
       const res = await api.leads.listAdmin({
         type: leadTypeFilter || undefined,
         search: leadSearch.trim() || undefined,
@@ -342,11 +325,11 @@ export const AdminDashboardPage: React.FC = () => {
       setLeadsData(res);
       setLeadPage(res.page);
     } catch (err: any) {
-      setLeadsError(err.message || 'Failed to load lead and search activity');
+      showError(err.message || 'Failed to load lead and search activity');
     } finally {
       setLoadingLeads(false);
     }
-  }, [canAccessLeads, leadPage, leadTypeFilter, leadSearch, leadCityFilter, leadUserFilter]);
+  }, [canAccessLeads, leadPage, leadTypeFilter, leadSearch, leadCityFilter, leadUserFilter, showError]);
 
   // -------------------------------------------------------------
   // TAB 5: Quote Requests Management
@@ -360,7 +343,6 @@ export const AdminDashboardPage: React.FC = () => {
     last: true,
   });
   const [loadingQuotes, setLoadingQuotes] = useState(false);
-  const [quotesError, setQuotesError] = useState<string | null>(null);
   const [quoteSearch, setQuoteSearch] = useState('');
   const [quoteStatusFilter, setQuoteStatusFilter] = useState('');
   const [quotePage, setQuotePage] = useState(0);
@@ -374,13 +356,11 @@ export const AdminDashboardPage: React.FC = () => {
   const [interveneTargetStatus, setInterveneTargetStatus] = useState<QuoteRequestStatus>('CANCELLED');
   const [interveneReason, setInterveneReason] = useState('');
   const [submittingIntervention, setSubmittingIntervention] = useState(false);
-  const [interveneError, setInterveneError] = useState<string | null>(null);
 
   const fetchQuotes = useCallback(async (page: number = quotePage) => {
     if (!canOversightQuotes) return;
     try {
       setLoadingQuotes(true);
-      setQuotesError(null);
       const res = await api.admin.searchQuotes({
         search: quoteSearch.trim() || undefined,
         status: quoteStatusFilter || undefined,
@@ -390,11 +370,11 @@ export const AdminDashboardPage: React.FC = () => {
       setQuotesData(res);
       setQuotePage(res.page);
     } catch (err: any) {
-      setQuotesError(err.message || 'Failed to load quote requests');
+      showError(err.message || 'Failed to load quote requests');
     } finally {
       setLoadingQuotes(false);
     }
-  }, [canOversightQuotes, quotePage, quoteSearch, quoteStatusFilter]);
+  }, [canOversightQuotes, quotePage, quoteSearch, quoteStatusFilter, showError]);
 
   const handleInspectQuote = async (quoteId: number) => {
     try {
@@ -403,7 +383,7 @@ export const AdminDashboardPage: React.FC = () => {
       const detail = await api.admin.getQuoteDetail(quoteId);
       setSelectedQuoteDetail(detail);
     } catch (err: any) {
-      setGlobalError(err.message || 'Failed to fetch quote details');
+      showError(err.message || 'Failed to fetch quote details');
       setQuoteModalOpen(false);
     } finally {
       setLoadingQuoteDetail(false);
@@ -413,23 +393,22 @@ export const AdminDashboardPage: React.FC = () => {
   const handleConfirmQuoteIntervention = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedQuoteDetail || !interveneReason.trim()) {
-      setInterveneError('Please provide administrative justification for this status change.');
+      showWarning('Please provide administrative justification for this status change.');
       return;
     }
     try {
       setSubmittingIntervention(true);
-      setInterveneError(null);
       const updated = await api.admin.updateQuoteStatus(selectedQuoteDetail.id, {
         status: interveneTargetStatus,
         reason: interveneReason.trim(),
       });
       setSelectedQuoteDetail(updated);
       setQuoteInterveneModal(false);
-      setGlobalSuccess(`Successfully updated Quote #${updated.referenceNumber} to ${interveneTargetStatus}.`);
+      showSuccess(`Successfully updated Quote #${updated.referenceNumber} to ${interveneTargetStatus}.`);
       fetchQuotes();
       if (overviewMetrics) fetchOverview();
     } catch (err: any) {
-      setInterveneError(err.message || 'Failed to update quote status');
+      showError(err.message || 'Failed to update quote status');
     } finally {
       setSubmittingIntervention(false);
     }
@@ -441,32 +420,27 @@ export const AdminDashboardPage: React.FC = () => {
   // Pending Garages
   const [pendingGarages, setPendingGarages] = useState<GarageSummaryDto[]>([]);
   const [loadingGarages, setLoadingGarages] = useState(false);
-  const [garagesError, setGaragesError] = useState<string | null>(null);
   const [pendingGarageSearch, setPendingGarageSearch] = useState('');
 
   // Pending Edits
   const [pendingEdits, setPendingEdits] = useState<GarageProfileEditDto[]>([]);
   const [loadingEdits, setLoadingEdits] = useState(false);
-  const [editsError, setEditsError] = useState<string | null>(null);
   const [editSearch, setEditSearch] = useState('');
 
   // Pending Claims
   const [pendingClaims, setPendingClaims] = useState<GarageClaimDto[]>([]);
   const [loadingClaims, setLoadingClaims] = useState(false);
-  const [claimsError, setClaimsError] = useState<string | null>(null);
   const [claimSearch, setClaimSearch] = useState('');
 
   // Verification Documents
   const [docGarageIdInput, setDocGarageIdInput] = useState('');
   const [loadedDocs, setLoadedDocs] = useState<GarageDocumentDto[]>([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
-  const [docsError, setDocsError] = useState<string | null>(null);
   const [docSearchQuery, setDocSearchQuery] = useState('');
 
   // Master Services / Codes
   const [services, setServices] = useState<ServiceDto[]>([]);
   const [loadingServices, setLoadingServices] = useState(false);
-  const [servicesError, setServicesError] = useState<string | null>(null);
   const [newServiceName, setNewServiceName] = useState('');
   const [newServiceCategory, setNewServiceCategory] = useState<ServiceCategory>('PERIODIC_MAINTENANCE');
   const [serviceSearch, setServiceSearch] = useState('');
@@ -482,7 +456,6 @@ export const AdminDashboardPage: React.FC = () => {
     last: true,
   });
   const [loadingReports, setLoadingReports] = useState(false);
-  const [reportsError, setReportsError] = useState<string | null>(null);
   const [reportSearchQuery, setReportSearchQuery] = useState('');
   const [reportStatusFilter, setReportStatusFilter] = useState<'ALL' | ReviewReportStatus>('ALL');
   const [reportPage, setReportPage] = useState(0);
@@ -493,13 +466,11 @@ export const AdminDashboardPage: React.FC = () => {
   const [moderationAction, setModerationAction] = useState<'DISMISS' | 'HIDE_REVIEW' | 'DELETE_REVIEW'>('DISMISS');
   const [moderationNotes, setModerationNotes] = useState('');
   const [submittingModeration, setSubmittingModeration] = useState(false);
-  const [moderationError, setModerationError] = useState<string | null>(null);
 
   const fetchReviewReports = useCallback(async (page: number = reportPage) => {
     if (!isAdmin && !hasPermission('CONTENT_MODERATION')) return;
     try {
       setLoadingReports(true);
-      setReportsError(null);
       const res = await api.admin.getReviewReports({
         search: reportSearchQuery.trim() || undefined,
         status: reportStatusFilter === 'ALL' ? undefined : reportStatusFilter,
@@ -509,28 +480,27 @@ export const AdminDashboardPage: React.FC = () => {
       setReportsData(res);
       setReportPage(res.page);
     } catch (err: any) {
-      setReportsError(err.message || 'Failed to load review reports queue');
+      showError(err.message || 'Failed to load review reports queue');
     } finally {
       setLoadingReports(false);
     }
-  }, [isAdmin, hasPermission, reportPage, reportSearchQuery, reportStatusFilter]);
+  }, [isAdmin, hasPermission, reportPage, reportSearchQuery, reportStatusFilter, showError]);
 
   const handleModerateReport = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedReport) return;
     try {
       setSubmittingModeration(true);
-      setModerationError(null);
       await api.admin.moderateReviewReport(selectedReport.id, {
         action: moderationAction,
         decisionNotes: moderationNotes.trim() || undefined,
       });
       setModerationModalOpen(false);
-      setGlobalSuccess(`Review report #${selectedReport.id} successfully moderated with action "${moderationAction}".`);
+      showSuccess(`Review report #${selectedReport.id} successfully moderated with action "${moderationAction}".`);
       fetchReviewReports(reportPage);
       if (overviewMetrics) fetchOverview();
     } catch (err: any) {
-      setModerationError(err.message || 'Failed to moderate review report');
+      showError(err.message || 'Failed to moderate review report');
     } finally {
       setSubmittingModeration(false);
     }
@@ -545,64 +515,59 @@ export const AdminDashboardPage: React.FC = () => {
   const [actionNotes, setActionNotes] = useState('');
   const [actionRequiredNotes, setActionRequiredNotes] = useState(false);
   const [actionSubmitting, setActionSubmitting] = useState(false);
-  const [modalError, setModalError] = useState<string | null>(null);
   const onConfirmRef = useRef<((notes: string) => Promise<void>) | null>(null);
 
   const fetchPendingGarages = useCallback(async () => {
     if (!canApproveGarages) return;
     try {
       setLoadingGarages(true);
-      setGaragesError(null);
       const data = await api.admin.getPendingGarages();
       setPendingGarages(data || []);
     } catch (err: any) {
-      setGaragesError(err.message || 'Failed to load pending garages');
+      showError(err.message || 'Failed to load pending garages');
     } finally {
       setLoadingGarages(false);
     }
-  }, [canApproveGarages]);
+  }, [canApproveGarages, showError]);
 
   const fetchPendingEdits = useCallback(async () => {
     if (!canApproveGarages) return;
     try {
       setLoadingEdits(true);
-      setEditsError(null);
       const data = await api.admin.getPendingProfileEdits();
       setPendingEdits(data || []);
     } catch (err: any) {
-      setEditsError(err.message || 'Failed to load pending profile edits');
+      showError(err.message || 'Failed to load pending profile edits');
     } finally {
       setLoadingEdits(false);
     }
-  }, [canApproveGarages]);
+  }, [canApproveGarages, showError]);
 
   const fetchPendingClaims = useCallback(async () => {
     if (!canManageClaims) return;
     try {
       setLoadingClaims(true);
-      setClaimsError(null);
       const data = await api.admin.getPendingClaims();
       setPendingClaims(data || []);
     } catch (err: any) {
-      setClaimsError(err.message || 'Failed to load pending claims');
+      showError(err.message || 'Failed to load pending claims');
     } finally {
       setLoadingClaims(false);
     }
-  }, [canManageClaims]);
+  }, [canManageClaims, showError]);
 
   const fetchServices = useCallback(async () => {
     if (!isAdmin) return;
     try {
       setLoadingServices(true);
-      setServicesError(null);
       const data = await api.services.list();
       setServices(data || []);
     } catch (err: any) {
-      setServicesError(err.message || 'Failed to load services catalogue');
+      showError(err.message || 'Failed to load services catalogue');
     } finally {
       setLoadingServices(false);
     }
-  }, [isAdmin]);
+  }, [isAdmin, showError]);
 
   // -------------------------------------------------------------
   // TAB 13: Audit Trail (Phase 5)
@@ -616,7 +581,6 @@ export const AdminDashboardPage: React.FC = () => {
     last: true,
   });
   const [loadingAuditLogs, setLoadingAuditLogs] = useState(false);
-  const [auditLogsError, setAuditLogsError] = useState<string | null>(null);
   const [auditActionFilter, setAuditActionFilter] = useState('');
   const [auditTargetFilter, setAuditTargetFilter] = useState('');
   const [auditFromDate, setAuditFromDate] = useState('');
@@ -627,7 +591,6 @@ export const AdminDashboardPage: React.FC = () => {
     if (!isAdmin) return;
     try {
       setLoadingAuditLogs(true);
-      setAuditLogsError(null);
       const res = await api.admin.searchAuditLogs({
         actionType: auditActionFilter.trim() || undefined,
         targetType: auditTargetFilter.trim() || undefined,
@@ -639,11 +602,11 @@ export const AdminDashboardPage: React.FC = () => {
       setAuditLogsData(res);
       setAuditPage(res.page);
     } catch (err: any) {
-      setAuditLogsError(err.message || 'Failed to load audit trail records');
+      showError(err.message || 'Failed to load audit trail records');
     } finally {
       setLoadingAuditLogs(false);
     }
-  }, [isAdmin, auditPage, auditActionFilter, auditTargetFilter, auditFromDate, auditToDate]);
+  }, [isAdmin, auditPage, auditActionFilter, auditTargetFilter, auditFromDate, auditToDate, showError]);
 
   // Role & Permission Management (Phase 5)
   const [managingRoleOrPerm, setManagingRoleOrPerm] = useState(false);
@@ -651,16 +614,15 @@ export const AdminDashboardPage: React.FC = () => {
   const handleToggleUserPermission = async (targetUserId: number, permission: AdminPermissionCode, currentHasPerm: boolean) => {
     try {
       setManagingRoleOrPerm(true);
-      setGlobalError(null);
       const updated = await api.admin.manageUserPermission(targetUserId, {
         permission,
         action: currentHasPerm ? 'REVOKE' : 'GRANT',
       });
       setSelectedUserDetail(updated);
-      setGlobalSuccess(`Successfully ${currentHasPerm ? 'revoked' : 'granted'} permission ${permission}.`);
+      showSuccess(`Successfully ${currentHasPerm ? 'revoked' : 'granted'} permission ${permission}.`);
       fetchUsers();
     } catch (err: any) {
-      setGlobalError(err.message || 'Failed to update user permission');
+      showError(err.message || 'Failed to update user permission');
     } finally {
       setManagingRoleOrPerm(false);
     }
@@ -713,27 +675,24 @@ export const AdminDashboardPage: React.FC = () => {
     setActionDescription(description);
     setActionRequiredNotes(requireNotes);
     setActionNotes('');
-    setModalError(null);
     setActionModalOpen(true);
   };
 
   const handleConfirmAction = async () => {
     if (actionRequiredNotes && !actionNotes.trim()) {
-      setModalError('Please provide decision notes.');
+      showWarning('Please provide decision notes.');
       return;
     }
     if (!onConfirmRef.current) return;
 
     try {
       setActionSubmitting(true);
-      setModalError(null);
-      setGlobalError(null);
       await onConfirmRef.current(actionNotes.trim());
       setActionModalOpen(false);
-      setGlobalSuccess('Administrative decision processed successfully.');
+      showSuccess('Administrative decision processed successfully.');
       if (overviewMetrics) fetchOverview();
     } catch (err: any) {
-      setModalError(err.message || 'Action failed.');
+      showError(err.message || 'Action failed.');
     } finally {
       setActionSubmitting(false);
     }
@@ -784,14 +743,14 @@ export const AdminDashboardPage: React.FC = () => {
   const handleToggleVerified = async (g: GarageSummaryDto | AdminGarageDetailDto) => {
     try {
       await api.admin.setVerified(g.id, !g.isVerified, 'Admin verification toggle');
-      setGlobalSuccess(`Updated verification status for ${g.name}.`);
+      showSuccess(`Updated verification status for ${g.name}.`);
       fetchPendingGarages();
       if (activeTab === 'garages_all') fetchAllGarages();
       if (selectedGarageDetail && selectedGarageDetail.id === g.id) {
         handleInspectGarage(g.id);
       }
     } catch (err: any) {
-      setGlobalError(err.message || 'Failed to update verification status');
+      showError(err.message || 'Failed to update verification status');
     }
   };
 
@@ -837,7 +796,7 @@ export const AdminDashboardPage: React.FC = () => {
   const handleApproveClaim = (claim: GarageClaimDto) => {
     const check = canApproveClaim(claim);
     if (!check.canApprove) {
-      setGlobalError(`Approval Blocked: ${check.reason}`);
+      showWarning(`Approval Blocked: ${check.reason}`);
       return;
     }
 
@@ -881,19 +840,26 @@ export const AdminDashboardPage: React.FC = () => {
     docId: number,
     status: DocumentVerificationStatus
   ) => {
-    let rejectionReason: string | undefined = undefined;
     if (status === 'REJECTED') {
-      const reason = prompt('Please enter the reason for rejecting this document (e.g. illegible scan, expired license):');
-      if (!reason || !reason.trim()) return;
-      rejectionReason = reason.trim();
+      openDecisionModal(
+        `Reject Claim Document #${docId}`,
+        'Please enter the reason for rejecting this document (e.g. illegible scan, expired license):',
+        true,
+        async (notes) => {
+          await api.admin.reviewClaimDocument(claimId, docId, status, notes);
+          showSuccess(`Document verification status updated to ${status}.`);
+          fetchPendingClaims();
+        }
+      );
+      return;
     }
 
     try {
-      await api.admin.reviewClaimDocument(claimId, docId, status, rejectionReason);
-      setGlobalSuccess(`Document verification status updated to ${status}.`);
+      await api.admin.reviewClaimDocument(claimId, docId, status);
+      showSuccess(`Document verification status updated to ${status}.`);
       fetchPendingClaims();
     } catch (err: any) {
-      setGlobalError(err.message || 'Failed to update document verification status');
+      showError(err.message || 'Failed to update document verification status');
     }
   };
 
@@ -901,7 +867,7 @@ export const AdminDashboardPage: React.FC = () => {
     try {
       await api.admin.downloadClaimDocument(claimId, docId, fileName);
     } catch (err: any) {
-      setGlobalError(err.message || 'Failed to open claim document');
+      showError(err.message || 'Failed to open claim document');
     }
   };
 
@@ -920,29 +886,42 @@ export const AdminDashboardPage: React.FC = () => {
 
     try {
       setLoadingDocs(true);
-      setDocsError(null);
       const docs = await api.admin.getDocumentsForGarage(gId);
       setLoadedDocs(docs || []);
     } catch (err: any) {
-      setDocsError(err.message || 'Failed to load garage verification documents');
+      showError(err.message || 'Failed to load garage verification documents');
     } finally {
       setLoadingDocs(false);
     }
   };
 
   const handleReviewDocument = async (docId: number, status: DocumentVerificationStatus) => {
-    const reason = status === 'REJECTED' ? prompt('Enter rejection reason:') : undefined;
-    if (status === 'REJECTED' && !reason) return;
+    if (status === 'REJECTED') {
+      openDecisionModal(
+        `Reject Verification Document #${docId}`,
+        'Please enter the reason for rejecting this document:',
+        true,
+        async (notes) => {
+          await api.admin.reviewDocument(docId, status, notes);
+          showSuccess(`Document status updated to ${status}.`);
+          if (docGarageIdInput) {
+            const docs = await api.admin.getDocumentsForGarage(parseInt(docGarageIdInput, 10));
+            setLoadedDocs(docs || []);
+          }
+        }
+      );
+      return;
+    }
 
     try {
-      await api.admin.reviewDocument(docId, status, reason || undefined);
-      setGlobalSuccess(`Document status updated to ${status}.`);
+      await api.admin.reviewDocument(docId, status);
+      showSuccess(`Document status updated to ${status}.`);
       if (docGarageIdInput) {
         const docs = await api.admin.getDocumentsForGarage(parseInt(docGarageIdInput, 10));
         setLoadedDocs(docs || []);
       }
     } catch (err: any) {
-      setDocsError(err.message || 'Failed to update document status');
+      showError(err.message || 'Failed to update document status');
     }
   };
 
@@ -958,12 +937,12 @@ export const AdminDashboardPage: React.FC = () => {
         description: newServiceDesc.trim() || undefined,
         isActive: true,
       });
-      setGlobalSuccess('New master service created successfully.');
+      showSuccess('New master service created successfully.');
       setNewServiceName('');
       setNewServiceDesc('');
       fetchServices();
     } catch (err: any) {
-      setGlobalError(err.message || 'Failed to create service');
+      showError(err.message || 'Failed to create service');
     } finally {
       setCreatingService(false);
     }
@@ -974,11 +953,10 @@ export const AdminDashboardPage: React.FC = () => {
   const handleDownloadExport = async (type: 'users' | 'garages' | 'leads' | 'quotes') => {
     try {
       setDownloadingExport(type);
-      setGlobalError(null);
       await api.admin.downloadExport(type);
-      setGlobalSuccess(`Export for ${type} generated and downloaded successfully.`);
+      showSuccess(`Export for ${type} generated and downloaded successfully.`);
     } catch (err: any) {
-      setGlobalError(err.message || `Failed to export ${type} dataset`);
+      showError(err.message || `Failed to export ${type} dataset`);
     } finally {
       setDownloadingExport(null);
     }
@@ -1029,35 +1007,10 @@ export const AdminDashboardPage: React.FC = () => {
         </div>
       </div>
 
-      {globalSuccess && (
-        <Alert
-          type="success"
-          message={globalSuccess}
-          onClose={() => setGlobalSuccess(null)}
-          className="mb-4"
-        />
-      )}
-      {globalError && (
-        <Alert
-          type="error"
-          message={globalError}
-          onClose={() => setGlobalError(null)}
-          className="mb-4"
-        />
-      )}
-
       {/* ============================================================= */}
       {/* 2. ADMIN OVERVIEW: 6 CORE PLATFORM METRIC CARDS               */}
       {/* ============================================================= */}
       <div className="overview-section mb-6">
-        {overviewError && (
-          <Alert
-            type="error"
-            message={`Overview Metrics Error: ${overviewError}`}
-            onClose={() => setOverviewError(null)}
-            className="mb-4"
-          />
-        )}
 
         <div className="admin-metric-cards-container">
           {/* Card 1: Total Users (Blue) */}
@@ -1624,8 +1577,6 @@ export const AdminDashboardPage: React.FC = () => {
             </div>
           </form>
 
-          {usersError && <Alert type="error" message={usersError} className="mb-4" />}
-
           {loadingUsers ? (
             <div className="center-loader py-8">
               <div className="spinner"></div>
@@ -1876,8 +1827,6 @@ export const AdminDashboardPage: React.FC = () => {
             </div>
           </form>
 
-          {allGaragesError && <Alert type="error" message={allGaragesError} className="mb-4" />}
-
           {loadingAllGarages ? (
             <div className="center-loader py-8">
               <div className="spinner"></div>
@@ -2120,8 +2069,6 @@ export const AdminDashboardPage: React.FC = () => {
             </div>
           </form>
 
-          {leadsError && <Alert type="error" message={leadsError} className="mb-4" />}
-
           {loadingLeads ? (
             <div className="center-loader py-8">
               <div className="spinner"></div>
@@ -2327,8 +2274,6 @@ export const AdminDashboardPage: React.FC = () => {
             </div>
           </form>
 
-          {quotesError && <Alert type="error" message={quotesError} className="mb-4" />}
-
           {loadingQuotes ? (
             <div className="center-loader py-8">
               <div className="spinner"></div>
@@ -2469,8 +2414,6 @@ export const AdminDashboardPage: React.FC = () => {
             </button>
           </div>
 
-          {garagesError && <Alert type="error" message={garagesError} className="mb-4" />}
-
           {/* Search control */}
           <div className="mb-4">
             <AdminSearchBar
@@ -2590,8 +2533,6 @@ export const AdminDashboardPage: React.FC = () => {
             </button>
           </div>
 
-          {editsError && <Alert type="error" message={editsError} className="mb-4" />}
-
           {/* Search control */}
           <div className="mb-4">
             <AdminSearchBar
@@ -2686,8 +2627,6 @@ export const AdminDashboardPage: React.FC = () => {
               Refresh
             </button>
           </div>
-
-          {claimsError && <Alert type="error" message={claimsError} className="mb-4" />}
 
           {/* Search bar */}
           <div className="mb-4">
@@ -3201,8 +3140,6 @@ export const AdminDashboardPage: React.FC = () => {
             })()}
           </div>
 
-          {docsError && <Alert type="error" message={docsError} className="mb-4" />}
-
           {loadingDocs ? (
             <div className="center-loader py-12">
               <div className="spinner"></div>
@@ -3401,7 +3338,6 @@ export const AdminDashboardPage: React.FC = () => {
               ))}
             </div>
 
-            {servicesError && <Alert type="error" message={servicesError} className="mb-4" />}
             {loadingServices ? (
               <div className="center-loader py-8">
                 <div className="spinner"></div>
@@ -3544,8 +3480,6 @@ export const AdminDashboardPage: React.FC = () => {
               ))}
             </div>
           </div>
-
-          {reportsError && <Alert type="error" message={reportsError} className="mb-4" />}
 
           {loadingReports ? (
             <div className="center-loader py-12">
@@ -3690,7 +3624,6 @@ export const AdminDashboardPage: React.FC = () => {
                               setSelectedReport(rep);
                               setModerationAction('DISMISS');
                               setModerationNotes('');
-                              setModerationError(null);
                               setModerationModalOpen(true);
                             }}
                           >
@@ -3850,8 +3783,6 @@ export const AdminDashboardPage: React.FC = () => {
               🔄 Refresh Logs
             </button>
           </div>
-
-          {auditLogsError && <Alert type="error" message={auditLogsError} />}
 
           {/* Search Filters */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3 bg-secondary/10 p-3 rounded border border-border/20 text-xs">
@@ -4038,7 +3969,6 @@ export const AdminDashboardPage: React.FC = () => {
       <Modal isOpen={actionModalOpen} onClose={() => setActionModalOpen(false)} title={actionTitle}>
         <div className="space-y-4 text-xs">
           <p className="text-secondary leading-relaxed">{actionDescription}</p>
-          {modalError && <Alert type="error" message={modalError} className="mb-2" />}
           <div>
             <label className="label">
               Decision Notes {actionRequiredNotes ? <span className="text-danger">*</span> : '(Optional)'}
@@ -4262,7 +4192,6 @@ export const AdminDashboardPage: React.FC = () => {
             <p className="text-secondary leading-relaxed">
               Updating account status for <strong>{statusChangeUser.fullName}</strong> ({statusChangeUser.email}).
             </p>
-            {statusModalError && <Alert type="error" message={statusModalError} className="mb-2" />}
             <div>
               <label className="label">Target Status</label>
               <select
@@ -4336,8 +4265,6 @@ export const AdminDashboardPage: React.FC = () => {
                 </span>
               </div>
             </div>
-
-            {roleSwitchError && <Alert type="error" message={roleSwitchError} className="mb-2" />}
 
             {/* Role Selection */}
             <div>
@@ -4662,7 +4589,6 @@ export const AdminDashboardPage: React.FC = () => {
                 onClick={() => {
                   setInterveneTargetStatus('CANCELLED');
                   setInterveneReason('');
-                  setInterveneError(null);
                   setQuoteInterveneModal(true);
                 }}
               >
@@ -4683,7 +4609,6 @@ export const AdminDashboardPage: React.FC = () => {
             <p className="text-secondary leading-relaxed">
               Manually modify the lifecycle status for Quote <strong>#{selectedQuoteDetail.referenceNumber}</strong>. This action is auditable.
             </p>
-            {interveneError && <Alert type="error" message={interveneError} className="mb-2" />}
             <div>
               <label className="label">Target Status</label>
               <select
@@ -4734,8 +4659,6 @@ export const AdminDashboardPage: React.FC = () => {
       >
         {selectedReport && (
           <form onSubmit={handleModerateReport} className="space-y-4 text-xs max-h-[75vh] overflow-y-auto pr-1">
-            {moderationError && <Alert type="error" message={moderationError} className="mb-2" />}
-
             {/* Top Summary */}
             <div className="grid grid-cols-2 gap-3 p-3 bg-secondary/10 rounded-xl border border-border/20">
               <div>

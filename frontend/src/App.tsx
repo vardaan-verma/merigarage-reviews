@@ -1,5 +1,9 @@
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
+import { NotificationProvider } from './context/NotificationContext';
+import { ToastContainer } from './components/ToastContainer';
+import { GlobalConfirmationModal } from './components/ConfirmationModal';
+import { GlobalAuthModal } from './components/AuthRequiredModal';
 import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
 import { ProtectedRoute } from './components/ProtectedRoute';
@@ -42,111 +46,116 @@ export function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
-        <div className="app-shell flex flex-col min-h-screen">
-          <Navbar />
-          <main className="main-content flex-1">
-            <Routes>
-              {/* Public Routes */}
-              <Route path="/" element={<HomePage />} />
-              <Route path="/garages" element={<GaragesPage />} />
-              <Route path="/garages/:slug" element={<GarageDetailPage />} />
-              <Route path="/r/:slug" element={<QrRedirectPage />} />
-              <Route path="/qr/:slug" element={<QrRedirectPage />} />
-              <Route path="/services" element={<ServicesPage />} />
-              <Route path="/services/:serviceSlug" element={<ServicesPage />} />
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/register" element={<RegisterPage />} />
+        <NotificationProvider>
+          <div className="app-shell flex flex-col min-h-screen">
+            <ToastContainer />
+            <GlobalConfirmationModal />
+            <GlobalAuthModal />
+            <Navbar />
+            <main className="main-content flex-1">
+              <Routes>
+                {/* Public Routes */}
+                <Route path="/" element={<HomePage />} />
+                <Route path="/garages" element={<GaragesPage />} />
+                <Route path="/garages/:slug" element={<GarageDetailPage />} />
+                <Route path="/r/:slug" element={<QrRedirectPage />} />
+                <Route path="/qr/:slug" element={<QrRedirectPage />} />
+                <Route path="/services" element={<ServicesPage />} />
+                <Route path="/services/:serviceSlug" element={<ServicesPage />} />
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/register" element={<RegisterPage />} />
 
-              {/* Authenticated Common Routes */}
-              <Route
-                path="/profile"
-                element={
-                  <ProtectedRoute>
-                    <ProfilePage />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/my-reviews"
-                element={
-                  <ProtectedRoute>
-                    <MyReviewsPage />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/my-asked-quotes"
-                element={
-                  <ProtectedRoute>
-                    <MyAskedQuotesPage />
-                  </ProtectedRoute>
-                }
-              />
+                {/* Authenticated Common Routes */}
+                <Route
+                  path="/profile"
+                  element={
+                    <ProtectedRoute>
+                      <ProfilePage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/my-reviews"
+                  element={
+                    <ProtectedRoute>
+                      <MyReviewsPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/my-asked-quotes"
+                  element={
+                    <ProtectedRoute>
+                      <MyAskedQuotesPage />
+                    </ProtectedRoute>
+                  }
+                />
 
-              {/* Garage Owner & Admin Routes */}
-              <Route
-                path="/submit-garage"
-                element={
-                  <ProtectedRoute requiredRole={['ROLE_GARAGE_OWNER', 'ROLE_ADMIN']}>
-                    <SubmitGaragePage />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/my-claims"
-                element={
-                  <ProtectedRoute requiredRole={['ROLE_GARAGE_OWNER', 'ROLE_ADMIN']}>
-                    <MyClaimsPage />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/my-quotes"
-                element={
-                  <ProtectedRoute requiredRole={['ROLE_GARAGE_OWNER', 'ROLE_ADMIN']}>
-                    <MyQuotesPage />
-                  </ProtectedRoute>
-                }
-              />
+                {/* Garage Owner & Admin Routes */}
+                <Route
+                  path="/submit-garage"
+                  element={
+                    <ProtectedRoute requiredRole={['ROLE_GARAGE_OWNER', 'ROLE_ADMIN']}>
+                      <SubmitGaragePage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/my-claims"
+                  element={
+                    <ProtectedRoute requiredRole={['ROLE_GARAGE_OWNER', 'ROLE_ADMIN']}>
+                      <MyClaimsPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/my-quotes"
+                  element={
+                    <ProtectedRoute requiredRole={['ROLE_GARAGE_OWNER', 'ROLE_ADMIN']}>
+                      <MyQuotesPage />
+                    </ProtectedRoute>
+                  }
+                />
 
-              {/* Garage Owner & Admin Hub */}
-              <Route
-                path="/owner"
-                element={
-                  <ProtectedRoute requiredRole={['ROLE_GARAGE_OWNER', 'ROLE_ADMIN']}>
-                    <OwnerDashboardPage />
-                  </ProtectedRoute>
-                }
-              />
+                {/* Garage Owner & Admin Hub */}
+                <Route
+                  path="/owner"
+                  element={
+                    <ProtectedRoute requiredRole={['ROLE_GARAGE_OWNER', 'ROLE_ADMIN']}>
+                      <OwnerDashboardPage />
+                    </ProtectedRoute>
+                  }
+                />
 
-              {/* Administrator Console */}
-              <Route
-                path="/admin"
-                element={
-                  <ProtectedRoute
-                    requiredRole="ROLE_ADMIN"
-                    requiredPermission={[
-                      'GARAGE_APPROVAL',
-                      'CLAIM_MANAGEMENT',
-                      'VERIFICATION_REVIEW',
-                      'CONTENT_MODERATION',
-                      'USER_MANAGEMENT',
-                      'LEAD_ACCESS',
-                      'QUOTE_OVERSIGHT',
-                      'DATA_EXPORT',
-                    ]}
-                  >
-                    <AdminDashboardPage />
-                  </ProtectedRoute>
-                }
-              />
+                {/* Administrator Console */}
+                <Route
+                  path="/admin"
+                  element={
+                    <ProtectedRoute
+                      requiredRole="ROLE_ADMIN"
+                      requiredPermission={[
+                        'GARAGE_APPROVAL',
+                        'CLAIM_MANAGEMENT',
+                        'VERIFICATION_REVIEW',
+                        'CONTENT_MODERATION',
+                        'USER_MANAGEMENT',
+                        'LEAD_ACCESS',
+                        'QUOTE_OVERSIGHT',
+                        'DATA_EXPORT',
+                      ]}
+                    >
+                      <AdminDashboardPage />
+                    </ProtectedRoute>
+                  }
+                />
 
-              {/* 404 Fallback */}
-              <Route path="*" element={<NotFoundPage />} />
-            </Routes>
-          </main>
-          <Footer />
-        </div>
+                {/* 404 Fallback */}
+                <Route path="*" element={<NotFoundPage />} />
+              </Routes>
+            </main>
+            <Footer />
+          </div>
+        </NotificationProvider>
       </BrowserRouter>
     </AuthProvider>
   );

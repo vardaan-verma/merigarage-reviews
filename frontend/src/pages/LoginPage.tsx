@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Alert } from '../components/Alert';
+import { useToast } from '../context/NotificationContext';
 import { GoogleAuthButton } from '../components/GoogleAuthButton';
 import {
   getPendingAction,
@@ -11,6 +11,7 @@ import {
 
 export const LoginPage: React.FC = () => {
   const { user, login, isAuthenticated } = useAuth();
+  const { showSuccess, showError, showWarning, showToast } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -19,8 +20,7 @@ export const LoginPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [successNotice, setSuccessNotice] = useState<string | null>(null);
+  const [portalMismatch, setPortalMismatch] = useState<'customer' | 'garage' | null>(null);
 
   // Sync role tab matching portal param or pending action
   React.useEffect(() => {
@@ -39,19 +39,19 @@ export const LoginPage: React.FC = () => {
     }
   }, [location.search, location.state]);
 
-  // Sync email and success banner from registration redirect if available
+  // Sync email and show toast from registration redirect if available
   React.useEffect(() => {
     if (location.state?.registeredEmail && !email) {
       setEmail(location.state.registeredEmail);
     }
     if (location.state?.successMessage) {
-      setSuccessNotice(location.state.successMessage);
+      showSuccess(location.state.successMessage);
     }
-  }, [location.state]);
+  }, [location.state, showSuccess]);
 
   const handleSwitchTab = (tab: 'customer' | 'garage') => {
     setRoleTab(tab);
-    setErrorMessage(null);
+    setPortalMismatch(null);
     setPassword('');
   };
 
@@ -107,21 +107,44 @@ export const LoginPage: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim() || !password) {
-      setErrorMessage('Please provide both your registered email address and master password.');
+      showWarning('Please provide both your registered email address and master password.');
       return;
     }
 
     try {
       setSubmitting(true);
-      setErrorMessage(null);
-      setSuccessNotice(null);
+      setPortalMismatch(null);
       const loggedUser = await login(email.trim(), password, roleTab);
       const dest = resolvePostLoginDestination(loggedUser);
       navigate(dest.url, { state: dest.state, replace: true });
     } catch (err: any) {
       // Preserve the entered email/username, but never preserve or redisplay the password after an authentication failure
       setPassword('');
-      setErrorMessage(err.message || 'Invalid email or password.');
+      const msg = err.message || 'Invalid email or password.';
+      if (msg.includes('Customer Portal') && roleTab === 'garage') {
+        setPortalMismatch('customer');
+        showToast({
+          type: 'warning',
+          message: msg,
+          action: {
+            label: 'Switch to Customer Portal',
+            onClick: () => handleSwitchTab('customer'),
+          },
+        });
+      } else if (msg.includes('Garage Login') && roleTab === 'customer') {
+        setPortalMismatch('garage');
+        showToast({
+          type: 'warning',
+          message: msg,
+          action: {
+            label: 'Switch to Garage Login',
+            onClick: () => handleSwitchTab('garage'),
+          },
+        });
+      } else {
+        setPortalMismatch(null);
+        showError(msg);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -145,8 +168,6 @@ export const LoginPage: React.FC = () => {
               : 'Manage workshop credentials, review responses, and photo galleries.'}
           </p>
         </div>
-
-
 
         {/* Customer Login vs Garage Login buttons styled like Navbar buttons */}
         <div className="flex items-center justify-center gap-3 mb-6">
@@ -176,42 +197,20 @@ export const LoginPage: React.FC = () => {
           </button>
         </div>
 
-        {successNotice && (
-          <Alert
-            type="success"
-            message={successNotice}
-            onClose={() => setSuccessNotice(null)}
-            className="mb-4"
-          />
-        )}
-
-        {errorMessage && (
-          <div className="mb-4 space-y-2">
-            <Alert
-              type="error"
-              message={errorMessage}
-              onClose={() => setErrorMessage(null)}
-            />
-            {errorMessage.includes('Customer Portal') && roleTab === 'garage' && (
-              <button
-                type="button"
-                onClick={() => handleSwitchTab('customer')}
-                className="btn btn-primary btn-sm w-full flex items-center justify-center gap-1.5 py-2 text-xs"
-              >
-                <span className="material-symbols-outlined text-base">person</span>
-                <span>Switch to Customer Portal</span>
-              </button>
-            )}
-            {errorMessage.includes('Garage Login') && roleTab === 'customer' && (
-              <button
-                type="button"
-                onClick={() => handleSwitchTab('garage')}
-                className="btn btn-primary btn-sm w-full flex items-center justify-center gap-1.5 py-2 text-xs"
-              >
-                <span className="material-symbols-outlined text-base">construction</span>
-                <span>Switch to Garage Login</span>
-              </button>
-            )}
+        {portalMismatch && (
+          <div className="mb-4">
+            <button
+              type="button"
+              onClick={() => handleSwitchTab(portalMismatch)}
+              className="btn btn-primary btn-sm w-full flex items-center justify-center gap-1.5 py-2 text-xs"
+            >
+              <span className="material-symbols-outlined text-base">
+                {portalMismatch === 'customer' ? 'person' : 'construction'}
+              </span>
+              <span>
+                Switch to {portalMismatch === 'customer' ? 'Customer Portal' : 'Garage Login'}
+              </span>
+            </button>
           </div>
         )}
 
@@ -224,7 +223,7 @@ export const LoginPage: React.FC = () => {
               const dest = resolvePostLoginDestination(loggedUser);
               navigate(dest.url, { state: dest.state, replace: true });
             }}
-            onError={(err) => setErrorMessage(err)}
+            onError={(err) => showError(err)}
             disabled={submitting}
           />
         </div>

@@ -2,13 +2,13 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api/client';
 import type { UserReviewDto, UpdateReviewRequest } from '../api/types';
-import { Alert } from '../components/Alert';
 import { Modal } from '../components/Modal';
+import { useToast } from '../context/NotificationContext';
 
 export const MyReviewsPage: React.FC = () => {
+  const { showSuccess, showError, showWarning } = useToast();
   const [reviews, setReviews] = useState<UserReviewDto[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   // Edit modal state
   const [editingReview, setEditingReview] = useState<UserReviewDto | null>(null);
@@ -19,21 +19,19 @@ export const MyReviewsPage: React.FC = () => {
   const [editTitle, setEditTitle] = useState('');
   const [editText, setEditText] = useState('');
   const [updating, setUpdating] = useState(false);
-  const [editError, setEditError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const fetchReviews = useCallback(async () => {
     try {
       setLoading(true);
-      setError(null);
       const data = await api.reviews.getMyReviews();
       setReviews(data);
     } catch (err: any) {
-      setError(err.message || 'Failed to load your reviews.');
+      const msg = err.message || 'Failed to load your reviews.';
+      showError(msg);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [showError]);
 
   useEffect(() => {
     fetchReviews();
@@ -47,20 +45,18 @@ export const MyReviewsPage: React.FC = () => {
     setEditRatingCommunication(review.ratingCommunication || 5);
     setEditTitle(review.reviewTitle || '');
     setEditText(review.reviewText);
-    setEditError(null);
   };
 
   const handleUpdateReview = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingReview) return;
     if (!editText.trim()) {
-      setEditError('Review text cannot be blank.');
+      showWarning('Review text cannot be blank.');
       return;
     }
 
     try {
       setUpdating(true);
-      setEditError(null);
       const updatePayload: UpdateReviewRequest = {
         serviceQuality: editRatingQuality,
         pricing: editRatingPricing,
@@ -74,11 +70,13 @@ export const MyReviewsPage: React.FC = () => {
         reviewText: editText.trim(),
       };
       await api.reviews.update(editingReview.id, updatePayload);
-      setSuccessMessage('Your review has been updated successfully.');
+      const msg = 'Your review has been updated successfully.';
+      showSuccess(msg);
       setEditingReview(null);
       fetchReviews();
     } catch (err: any) {
-      setEditError(err.message || 'Failed to update review.');
+      const msg = err.message || 'Failed to update review.';
+      showError(msg);
     } finally {
       setUpdating(false);
     }
@@ -106,17 +104,6 @@ export const MyReviewsPage: React.FC = () => {
           Explore Workshops
         </Link>
       </div>
-
-      {successMessage && (
-        <Alert
-          type="success"
-          message={successMessage}
-          onClose={() => setSuccessMessage(null)}
-          className="mb-6"
-        />
-      )}
-
-      {error && <Alert type="error" message={error} className="mb-6" />}
 
       {/* Metrics Summary Strip */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
@@ -273,8 +260,6 @@ export const MyReviewsPage: React.FC = () => {
       >
         {editingReview && (
           <form onSubmit={handleUpdateReview} className="space-y-4 text-xs">
-            {editError && <Alert type="error" message={editError} className="mb-2" />}
-
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="label">Service Quality (1-5)</label>

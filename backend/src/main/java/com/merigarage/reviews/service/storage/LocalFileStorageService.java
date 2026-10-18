@@ -220,6 +220,22 @@ public class LocalFileStorageService implements FileStorageService {
         return false;
     }
 
+    public static String detectContentTypeFromBytes(byte[] bytes) {
+        if (bytes == null || bytes.length < 12) {
+            return "image/jpeg";
+        }
+        // PNG: 89 50 4E 47
+        if ((bytes[0] & 0xFF) == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47) {
+            return "image/png";
+        }
+        // WebP: RIFF / WEBP
+        if (bytes[0] == 'R' && bytes[1] == 'I' && bytes[2] == 'F' && bytes[3] == 'F' &&
+                bytes[8] == 'W' && bytes[9] == 'E' && bytes[10] == 'B' && bytes[11] == 'P') {
+            return "image/webp";
+        }
+        return "image/jpeg";
+    }
+
     public static void validateImageContent(byte[] bytes, String contentType) {
         if (!hasValidImageMagicBytes(bytes)) {
             throw new ValidationException("Invalid image content. File signature does not match supported image format (JPEG, PNG, WebP).");

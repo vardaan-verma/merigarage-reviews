@@ -139,7 +139,7 @@ public class GooglePhotoImportService {
                     !contentType.equalsIgnoreCase("image/webp")) {
                 // If content type was generic application/octet-stream, probe magic bytes
                 if (LocalFileStorageService.hasValidImageMagicBytes(bytes)) {
-                    contentType = "image/jpeg";
+                    contentType = LocalFileStorageService.detectContentTypeFromBytes(bytes);
                 } else {
                     log.warn("Google photo returned unsupported content type '{}': {}", contentType, trimmedUrl);
                     return null;
@@ -156,7 +156,7 @@ public class GooglePhotoImportService {
             String storageKey = fileStorageService.storeUserProfilePhotoBytes(bytes, contentType, userId);
             log.info("Successfully imported and stored Google profile photo for user {} under key {}", userId, storageKey);
             return storageKey;
-        } catch (Exception ex) {
+        } catch (Throwable ex) {
             log.warn("Failed to download and import Google profile photo from {}: {}", trimmedUrl, ex.getMessage());
             return null;
         }

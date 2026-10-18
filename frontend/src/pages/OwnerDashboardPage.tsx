@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
+import { useConfirm, useToast } from '../context/NotificationContext';
 import type {
   GarageDetailDto,
   GarageSummaryDto,
@@ -15,7 +16,6 @@ import type {
   QuoteRequestDto,
   QuoteOwnerResponseRequest,
 } from '../api/types';
-import { Alert } from '../components/Alert';
 import { Modal } from '../components/Modal';
 import { StateSelect, CitySelect } from '../components/LocationSelect';
 import { getCitiesForState } from '../data/indiaLocations';
@@ -33,6 +33,8 @@ interface PendingPhoto {
 
 export const OwnerDashboardPage: React.FC = () => {
   const { user, isAdmin, refreshUser } = useAuth();
+  const confirm = useConfirm();
+  const { showSuccess, showError, showWarning } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const slugParam = searchParams.get('slug') || '';
 
@@ -48,14 +50,11 @@ export const OwnerDashboardPage: React.FC = () => {
   const [proposedAmount, setProposedAmount] = useState<number | ''>('');
   const [ownerNotes, setOwnerNotes] = useState('');
   const [ownerActionLoading, setOwnerActionLoading] = useState(false);
-  const [ownerActionError, setOwnerActionError] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
   const [replyLoading, setReplyLoading] = useState(false);
 
   // Loading & Global Status
   const [loading, setLoading] = useState(false);
-  const [globalError, setGlobalError] = useState<string | null>(null);
-  const [globalSuccess, setGlobalSuccess] = useState<string | null>(null);
 
   // Profile Edits Data
   const [profileEdits, setProfileEdits] = useState<GarageProfileEditDto[]>([]);
@@ -75,14 +74,12 @@ export const OwnerDashboardPage: React.FC = () => {
   const [pendingPhotos, setPendingPhotos] = useState<PendingPhoto[]>([]);
   const [uploadingPhotos, setUploadingPhotos] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
-  const [photoError, setPhotoError] = useState<string | null>(null);
   const [deletingPhotoId, setDeletingPhotoId] = useState<number | null>(null);
 
   // Documents Data
   const [documents, setDocuments] = useState<GarageDocumentDto[]>([]);
   const [docType, setDocType] = useState<DocumentType>('TRADE_LICENSE');
   const [uploadingDoc, setUploadingDoc] = useState(false);
-  const [docError, setDocError] = useState<string | null>(null);
 
   // Services Data
   const [allServices, setAllServices] = useState<ServiceDto[]>([]);
@@ -93,14 +90,10 @@ export const OwnerDashboardPage: React.FC = () => {
   const loadGarageById = useCallback(async (garageId: number) => {
     try {
       setLoading(true);
-      setGlobalError(null);
-      setGlobalSuccess(null);
       // Clean previous sub-resources to avoid stale state between workshops
       setProfileEdits([]);
       setDocuments([]);
       setPendingPhotos([]);
-      setPhotoError(null);
-      setDocError(null);
 
       const data = await api.garageManagement.getMyGarageById(garageId);
       setActiveGarage(data);
@@ -131,12 +124,12 @@ export const OwnerDashboardPage: React.FC = () => {
       setAllServices(allServicesRes);
       setQuoteRequests(quotesRes);
     } catch (err: any) {
-      setGlobalError(err.message || 'Unable to load workshop details. Ensure you are authorized to manage this workshop.');
+      showError(err.message || 'Unable to load workshop details. Ensure you are authorized to manage this workshop.');
       setActiveGarage(null);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [showError]);
 
   useEffect(() => {
     refreshUser().catch(() => {});
@@ -155,9 +148,9 @@ export const OwnerDashboardPage: React.FC = () => {
         }
       })
       .catch((err: any) => {
-        setGlobalError(err.message || 'Failed to fetch your registered workshops');
+        showError(err.message || 'Failed to fetch your registered workshops');
       });
-  }, [refreshUser, loadGarageById]);
+  }, [refreshUser, loadGarageById, showError]);
 
   useEffect(() => {
     if (slugParam && myGarages.length > 0) {
@@ -181,7 +174,6 @@ export const OwnerDashboardPage: React.FC = () => {
 
     try {
       setEditSubmitting(true);
-      setGlobalError(null);
 
       const payload: ProfileEditRequest = {
         proposedName: editName.trim(),
@@ -196,11 +188,11 @@ export const OwnerDashboardPage: React.FC = () => {
       };
 
       await api.garageManagement.submitProfileEdit(activeGarage.id, payload);
-      setGlobalSuccess('Profile edit proposal submitted for administrative approval.');
+      showSuccess('Profile edit proposal submitted for administrative approval.');
       const edits = await api.garageManagement.getProfileEdits(activeGarage.id);
       setProfileEdits(edits);
     } catch (err: any) {
-      setGlobalError(err.message || 'Failed to submit profile edit proposal');
+      showError(err.message || 'Failed to submit profile edit proposal');
     } finally {
       setEditSubmitting(false);
     }
@@ -228,14 +220,13 @@ export const OwnerDashboardPage: React.FC = () => {
     const fileList = e.target.files;
     if (!fileList || fileList.length === 0 || !activeGarage) return;
 
-    setPhotoError(null);
     const files = Array.from(fileList);
     const newPending: PendingPhoto[] = [];
     const MAX_ALLOWED = 7;
     const currentTotal = photos.length + pendingPhotos.length;
 
     if (photos.length > MAX_ALLOWED) {
-      setPhotoError(
+      showWarning(
         `This workshop currently has ${photos.length} photos (exceeding the 7-photo limit). You cannot upload new photos until you remove enough photos to bring the total below 7.`
       );
       e.target.value = '';
@@ -243,7 +234,7 @@ export const OwnerDashboardPage: React.FC = () => {
     }
 
     if (photos.length >= MAX_ALLOWED) {
-      setPhotoError(
+      showWarning(
         'Maximum limit of 7 active photos reached (1 cover photo and up to 6 gallery photos). Please delete an existing photo to upload a new one.'
       );
       e.target.value = '';
@@ -289,9 +280,9 @@ export const OwnerDashboardPage: React.FC = () => {
     }
 
     if (limitReached) {
-      setPhotoError(`Maximum limit of ${MAX_ALLOWED} active photos reached (currently have ${photos.length} saved, ${pendingPhotos.length} pending).`);
+      showWarning(`Maximum limit of ${MAX_ALLOWED} active photos reached (currently have ${photos.length} saved, ${pendingPhotos.length} pending).`);
     } else if (oversizeCount > 0 || unsupportedCount > 0) {
-      setPhotoError(`Some selected photos have validation errors (marked in red below). Click Remove to discard them before uploading.`);
+      showWarning(`Some selected photos have validation errors (marked in red below). Click Remove to discard them before uploading.`);
     }
 
     if (newPending.length > 0) {
@@ -314,10 +305,6 @@ export const OwnerDashboardPage: React.FC = () => {
       if (!hasSavedCover && target?.isCover && updated.length > 0) {
         const nextValid = updated.find((p) => p.status !== 'error') || updated[0];
         nextValid.isCover = true;
-      }
-      const hasErrorsLeft = updated.some((p) => p.status === 'error');
-      if (!hasErrorsLeft) {
-        setPhotoError(null);
       }
       return updated;
     });
@@ -343,7 +330,6 @@ export const OwnerDashboardPage: React.FC = () => {
       if (p.previewUrl) URL.revokeObjectURL(p.previewUrl);
     });
     setPendingPhotos([]);
-    setPhotoError(null);
   };
 
   // Upload all pending photos sequentially
@@ -352,12 +338,11 @@ export const OwnerDashboardPage: React.FC = () => {
 
     const invalidCount = pendingPhotos.filter((p) => p.status === 'error').length;
     if (invalidCount > 0) {
-      setPhotoError(`Please remove the ${invalidCount} invalid photo(s) before uploading.`);
+      showWarning(`Please remove the ${invalidCount} invalid photo(s) before uploading.`);
       return;
     }
 
     setUploadingPhotos(true);
-    setPhotoError(null);
     let failures = 0;
     const working = [...pendingPhotos];
     const newlyUploadedPhotos: GaragePhotoDto[] = [];
@@ -399,14 +384,14 @@ export const OwnerDashboardPage: React.FC = () => {
 
     if (newlyUploadedPhotos.length > 0) {
       setPhotos((prev) => [...prev, ...newlyUploadedPhotos]);
-      setGlobalSuccess(
+      showSuccess(
         `${newlyUploadedPhotos.length} workshop photo(s) uploaded successfully.` +
           (failures > 0 ? ` ${failures} photo(s) failed.` : '')
       );
     }
 
     if (failures > 0) {
-      setPhotoError(`${failures} photo upload(s) failed. Check details below and retry.`);
+      showError(`${failures} photo upload(s) failed. Check details below and retry.`);
     }
 
     setUploadingPhotos(false);
@@ -424,16 +409,23 @@ export const OwnerDashboardPage: React.FC = () => {
           isCover: p.id === photoId,
         }))
       );
-      setGlobalSuccess('Cover photo updated.');
+      showSuccess('Cover photo updated.');
     } catch (err: any) {
-      setGlobalError(err.message || 'Failed to set cover photo');
+      showError(err.message || 'Failed to set cover photo');
     }
   };
 
   // Delete Saved Photo from Server
   const handleDeletePhoto = async (photoId: number) => {
     if (!activeGarage || deletingPhotoId != null) return;
-    if (!window.confirm('Are you sure you want to delete this photo from your workshop gallery?')) return;
+    const confirmed = await confirm({
+      title: 'Delete Workshop Photo?',
+      message: 'Are you sure you want to delete this photo from your workshop gallery? This will permanently remove it from your public listing.',
+      confirmText: 'Delete Photo',
+      variant: 'danger',
+      icon: 'delete',
+    });
+    if (!confirmed) return;
 
     try {
       setDeletingPhotoId(photoId);
@@ -446,9 +438,11 @@ export const OwnerDashboardPage: React.FC = () => {
         }
         return filtered;
       });
-      setGlobalSuccess('Workshop photo removed from gallery.');
+      const msg = 'Workshop photo removed from gallery.';
+      showSuccess(msg);
     } catch (err: any) {
-      setGlobalError(err.message || 'Failed to delete photo');
+      const msg = err.message || 'Failed to delete photo';
+      showError(msg);
     } finally {
       setDeletingPhotoId(null);
     }
@@ -461,12 +455,11 @@ export const OwnerDashboardPage: React.FC = () => {
 
     try {
       setUploadingDoc(true);
-      setDocError(null);
       const newDoc = await api.garageManagement.uploadDocument(activeGarage.id, file, docType);
       setDocuments([...documents, newDoc]);
-      setGlobalSuccess('Verification document uploaded securely.');
+      showSuccess('Verification document uploaded securely.');
     } catch (err: any) {
-      setDocError(err.message || 'Failed to upload document. Allowed types: PDF, JPG, PNG up to 10MB.');
+      showError(err.message || 'Failed to upload document. Allowed types: PDF, JPG, PNG up to 10MB.');
     } finally {
       setUploadingDoc(false);
       e.target.value = '';
@@ -483,7 +476,7 @@ export const OwnerDashboardPage: React.FC = () => {
       if (existing) {
         await api.garageManagement.disassociateService(activeGarage.id, svc.id);
         setGarageServices(garageServices.filter((gs) => gs.serviceId !== svc.id));
-        setGlobalSuccess(`Removed ${svc.name} from offered services.`);
+        showSuccess(`Removed ${svc.name} from offered services.`);
       } else {
         const added = await api.garageManagement.associateService(activeGarage.id, {
           serviceId: svc.id,
@@ -491,10 +484,10 @@ export const OwnerDashboardPage: React.FC = () => {
           isAvailable: true,
         });
         setGarageServices([...garageServices, added]);
-        setGlobalSuccess(`Added ${svc.name} to offered services.`);
+        showSuccess(`Added ${svc.name} to offered services.`);
       }
     } catch (err: any) {
-      setGlobalError(err.message || 'Failed to update service association');
+      showError(err.message || 'Failed to update service association');
     } finally {
       setUpdatingServiceId(null);
     }
@@ -510,7 +503,7 @@ export const OwnerDashboardPage: React.FC = () => {
         if (updated) setSelectedQuote(updated);
       }
     } catch (err: any) {
-      setGlobalError(err.message || 'Failed to refresh quote requests');
+      showError(err.message || 'Failed to refresh quote requests');
     }
   };
 
@@ -520,7 +513,6 @@ export const OwnerDashboardPage: React.FC = () => {
   ) => {
     setSelectedQuote(quote);
     setRespondAction(action);
-    setOwnerActionError(null);
     if (action === 'QUOTE') {
       setProposedAmount(quote.proposedQuoteAmount || quote.estimatedMinPrice || '');
       setOwnerNotes(quote.ownerNotes || '');
@@ -539,14 +531,13 @@ export const OwnerDashboardPage: React.FC = () => {
 
     if (respondAction === 'QUOTE') {
       if (!proposedAmount || Number(proposedAmount) <= 0) {
-        setOwnerActionError('Please enter a valid positive quotation amount (₹).');
+        showWarning('Please enter a valid positive quotation amount (₹).');
         return;
       }
     }
 
     try {
       setOwnerActionLoading(true);
-      setOwnerActionError(null);
 
       const payload: QuoteOwnerResponseRequest = {
         action: respondAction,
@@ -555,14 +546,14 @@ export const OwnerDashboardPage: React.FC = () => {
       };
 
       const updated = await api.quotes.ownerResponse(selectedQuote.id, payload);
-      setGlobalSuccess(`Quote ${selectedQuote.referenceNumber} status updated to ${updated.status}.`);
+      showSuccess(`Quote ${selectedQuote.referenceNumber} status updated to ${updated.status}.`);
       setSelectedQuote(null);
       setRespondAction(null);
       setProposedAmount('');
       setOwnerNotes('');
       await handleRefreshQuotes();
     } catch (err: any) {
-      setOwnerActionError(err.message || 'Failed to submit response');
+      showError(err.message || 'Failed to submit response');
     } finally {
       setOwnerActionLoading(false);
     }
@@ -574,13 +565,13 @@ export const OwnerDashboardPage: React.FC = () => {
 
     try {
       setReplyLoading(true);
-      setOwnerActionError(null);
       const updated = await api.quotes.addMessage(selectedQuote.id, replyText.trim());
       setSelectedQuote(updated);
       setReplyText('');
+      showSuccess('Reply sent to customer.');
       await handleRefreshQuotes();
     } catch (err: any) {
-      setOwnerActionError(err.message || 'Failed to send message');
+      showError(err.message || 'Failed to send message');
     } finally {
       setReplyLoading(false);
     }
@@ -680,23 +671,6 @@ export const OwnerDashboardPage: React.FC = () => {
             </div>
           </div>
         )
-      )}
-
-      {globalSuccess && (
-        <Alert
-          type="success"
-          message={globalSuccess}
-          onClose={() => setGlobalSuccess(null)}
-          className="mb-4"
-        />
-      )}
-      {globalError && (
-        <Alert
-          type="error"
-          message={globalError}
-          onClose={() => setGlobalError(null)}
-          className="mb-4"
-        />
       )}
 
       {loading ? (
@@ -1290,7 +1264,6 @@ export const OwnerDashboardPage: React.FC = () => {
                                 setSelectedQuote(quote);
                                 setRespondAction(null);
                                 setReplyText('');
-                                setOwnerActionError(null);
                               }}
                             >
                               <span className="material-symbols-outlined text-xs">chat</span>
@@ -1478,20 +1451,12 @@ export const OwnerDashboardPage: React.FC = () => {
               </div>
 
               {photos.length > 7 && (
-                <Alert
-                  type="warning"
-                  message={`This workshop currently has ${photos.length} active photos (exceeding the 7-photo limit). Existing photos are safely preserved, but further uploads are blocked until photos are reduced below 7.`}
-                  className="mb-4"
-                />
-              )}
-
-              {photoError && (
-                <Alert
-                  type="error"
-                  message={photoError}
-                  onClose={() => setPhotoError(null)}
-                  className="mb-4"
-                />
+                <div className="p-3 rounded-lg border border-warning/40 bg-warning/10 text-xs text-warning flex items-start gap-2 mb-4">
+                  <span className="material-symbols-outlined text-sm flex-shrink-0 mt-0.5">warning</span>
+                  <span>
+                    This workshop currently has {photos.length} active photos (exceeding the 7-photo limit). Existing photos are safely preserved, but further uploads are blocked until photos are reduced below 7.
+                  </span>
+                </div>
               )}
 
               {/* Upload controls / file selection bar */}
@@ -1774,7 +1739,6 @@ export const OwnerDashboardPage: React.FC = () => {
                     />
                   </div>
                 </div>
-                {docError && <Alert type="error" message={docError} className="mt-3" />}
               </div>
 
               {/* Uploaded Documents Table */}
@@ -1898,7 +1862,6 @@ export const OwnerDashboardPage: React.FC = () => {
           onClose={() => {
             setSelectedQuote(null);
             setRespondAction(null);
-            setOwnerActionError(null);
           }}
           title={
             respondAction === 'QUOTE'
@@ -1914,10 +1877,6 @@ export const OwnerDashboardPage: React.FC = () => {
           maxWidth="lg"
         >
           <div className="space-y-4">
-            {ownerActionError && (
-              <Alert type="error" message={ownerActionError} onClose={() => setOwnerActionError(null)} />
-            )}
-
             {/* Quick Context Card */}
             <div className="p-3 bg-surface rounded border border-border text-xs flex justify-between items-center flex-wrap gap-2">
               <div>

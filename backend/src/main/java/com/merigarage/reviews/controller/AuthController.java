@@ -36,6 +36,8 @@ import java.util.Set;
 @RequestMapping("/api/auth")
 public class AuthController {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(AuthController.class);
+
     private final UserService userService;
     private final AuthenticationManager authenticationManager;
     private final SecurityContextRepository securityContextRepository;
@@ -162,9 +164,7 @@ public class AuthController {
             if (existingUserOpt.isPresent()) {
                 User existingUser = existingUserOpt.get();
 
-                Set<RoleName> userRoles = userRoleRepository.findByUserId(existingUser.getId()).stream()
-                        .map(ur -> ur.getRole().getName())
-                        .collect(java.util.stream.Collectors.toSet());
+                Set<RoleName> userRoles = userRoleRepository.findRoleNamesByUserId(existingUser.getId());
                 boolean isAdmin = userRoles.contains(RoleName.ROLE_ADMIN);
                 boolean isGarageOwner = userRoles.contains(RoleName.ROLE_GARAGE_OWNER);
 
@@ -240,6 +240,26 @@ public class AuthController {
                 leadTrackingService.associateSessionWithUser(request.sessionId(), user);
             }
 
+            // Safe, non-blocking profile photo handling AFTER authentication and session persistence
+            if (payload.picture() != null && !payload.picture().isBlank()) {
+                try {
+                    User updatedUser = userService.tryImportInitialGooglePhoto(user.getId(), payload.picture());
+                    if (updatedUser != null && updatedUser.getProfilePhotoUrl() != null) {
+                        UserPrincipal freshPrincipal = (UserPrincipal) customUserDetailsService.loadUserByUsername(updatedUser.getEmail());
+                        Authentication freshAuth = new UsernamePasswordAuthenticationToken(
+                                freshPrincipal,
+                                null,
+                                freshPrincipal.getAuthorities()
+                        );
+                        context.setAuthentication(freshAuth);
+                        securityContextRepository.saveContext(context, httpRequest, httpResponse);
+                        return ResponseEntity.ok(UserDto.fromPrincipal(freshPrincipal));
+                    }
+                } catch (Throwable t) {
+                    log.warn("Non-fatal: Google profile photo handling failed for user {}: {}", user.getId(), t.getMessage());
+                }
+            }
+
             return ResponseEntity.ok(UserDto.fromPrincipal(principal));
         } catch (ValidationException ex) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
@@ -252,6 +272,7 @@ public class AuthController {
                     "message", ex.getMessage()
             ));
         } catch (Exception ex) {
+            log.error("Unexpected error in googleAuth", ex);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
                     "error", "Internal Server Error",
                     "message", "An unexpected error occurred during Google authentication."

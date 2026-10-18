@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import type { GarageSummaryDto, ServiceDto } from '../api/types';
 import { GarageCard } from '../components/GarageCard';
-import { Alert } from '../components/Alert';
+import { useToast } from '../context/NotificationContext';
 import scribbleUnderline from '../assets/scribble-underline.png';
 import {
   safeTrackLeadEvent,
@@ -69,10 +69,10 @@ const POPULAR_SERVICES_LIST = [
 ];
 
 export const HomePage: React.FC = () => {
+  const { showError, showWarning } = useToast();
   const [featuredGarages, setFeaturedGarages] = useState<GarageSummaryDto[]>([]);
   const [popularServices, setPopularServices] = useState<ServiceDto[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   // Hero Lead Generation & Quote Form State
   const [selectedState, setSelectedState] = useState('');
@@ -81,7 +81,6 @@ export const HomePage: React.FC = () => {
   const [selectedCar, setSelectedCar] = useState('');
   const [selectedService, setSelectedService] = useState('');
   const [mobileNumber, setMobileNumber] = useState('');
-  const [formError, setFormError] = useState<string | null>(null);
   const [formSubmitted, setFormSubmitted] = useState(false);
   const [mobileFormExpanded, setMobileFormExpanded] = useState(false);
 
@@ -108,7 +107,7 @@ export const HomePage: React.FC = () => {
         }
       } catch (err: any) {
         if (isMounted) {
-          setError(err.message || 'Failed to load home page listings');
+          showError(err.message || 'Failed to load home page listings');
         }
       } finally {
         if (isMounted) {
@@ -138,12 +137,11 @@ export const HomePage: React.FC = () => {
 
     if (!('geolocation' in navigator)) {
       setLocateStatus('unavailable');
-      setFormError('Browser geolocation is not supported.');
+      showWarning('Browser geolocation is not supported.');
       return;
     }
 
     setLocateStatus('locating');
-    setFormError(null);
     notifySearchStarted();
 
     navigator.geolocation.getCurrentPosition(
@@ -187,16 +185,15 @@ export const HomePage: React.FC = () => {
         } catch {
           // If geocoding fails, coordinates are still stored for distance sorting
         }
-        setFormError(null);
       },
       (geoError) => {
         setUserCoords(null);
         if (geoError.code === geoError.PERMISSION_DENIED) {
           setLocateStatus('denied');
-          setFormError('Location permission denied. Please select your state and city manually.');
+          showWarning('Location permission denied. Please select your state and city manually.');
         } else {
           setLocateStatus('unavailable');
-          setFormError('Unable to detect location. Please select your state and city manually.');
+          showWarning('Unable to detect location. Please select your state and city manually.');
         }
       },
       { timeout: 10000, enableHighAccuracy: true }
@@ -205,14 +202,13 @@ export const HomePage: React.FC = () => {
 
   const handleLeadQuoteSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setFormError(null);
 
     const cityToUse = (customCity.trim() || selectedCity).trim();
     const cleanPhone = mobileNumber.replace(/\D/g, '');
 
     // Optional phone number validation (validate 10 digits if entered)
     if (cleanPhone && cleanPhone.length !== 10) {
-      setFormError('Please enter a valid 10-digit mobile number.');
+      showWarning('Please enter a valid 10-digit mobile number.');
       return;
     }
 
@@ -443,12 +439,6 @@ export const HomePage: React.FC = () => {
                   className="quote-card-body"
                   noValidate
                 >
-                  {formError && (
-                    <div className="quote-form-alert text-xs text-danger mb-2 font-medium">
-                      ⚠️ {formError}
-                    </div>
-                  )}
-
                   {/* Field 1: State & City */}
                   <div className="form-field-group">
                     <label className="field-label" htmlFor="hero-state-select">
@@ -736,8 +726,6 @@ export const HomePage: React.FC = () => {
               Explore All Garages →
             </Link>
           </div>
-
-          {error && <Alert type="error" message={error} className="mb-6" />}
 
           {loading ? (
             <div className="center-loader">

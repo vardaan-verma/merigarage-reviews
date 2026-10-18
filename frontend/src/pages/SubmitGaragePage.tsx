@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import type { CreateGarageRequest, ServiceDto } from '../api/types';
-import { Alert } from '../components/Alert';
+import { useToast } from '../context/NotificationContext';
 import { StateSelect, CitySelect } from '../components/LocationSelect';
 import { getCitiesForState } from '../data/indiaLocations';
 
@@ -22,6 +22,7 @@ const ALLOWED_PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 export const SubmitGaragePage: React.FC = () => {
   const navigate = useNavigate();
+  const { showSuccess, showError, showWarning } = useToast();
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -46,11 +47,9 @@ export const SubmitGaragePage: React.FC = () => {
 
   // Photo management state
   const [selectedPhotos, setSelectedPhotos] = useState<SelectedPhoto[]>([]);
-  const [photoError, setPhotoError] = useState<string | null>(null);
 
   const [submitting, setSubmitting] = useState(false);
   const [submittingStatus, setSubmittingStatus] = useState<string>('');
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [submittedGarage, setSubmittedGarage] = useState<{ id: number; slug: string; name: string } | null>(null);
   const [isCompleteSuccess, setIsCompleteSuccess] = useState(false);
 
@@ -105,7 +104,6 @@ export const SubmitGaragePage: React.FC = () => {
   };
 
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setPhotoError(null);
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
@@ -117,7 +115,7 @@ export const SubmitGaragePage: React.FC = () => {
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       if (currentCount + newPhotos.length >= MAX_PHOTOS) {
-        setPhotoError(`Maximum limit of ${MAX_PHOTOS} active photos reached.`);
+        showWarning(`Maximum limit of ${MAX_PHOTOS} active photos reached.`);
         break;
       }
 
@@ -147,7 +145,7 @@ export const SubmitGaragePage: React.FC = () => {
     }
 
     if (oversizeCount > 0 || unsupportedCount > 0) {
-      setPhotoError(
+      showWarning(
         `Some selected images have errors (marked in red below). Click Remove to discard them before submitting.`
       );
     }
@@ -177,11 +175,6 @@ export const SubmitGaragePage: React.FC = () => {
       if (target?.isCover && filtered.length > 0) {
         const nextValid = filtered.find((p) => p.status !== 'error') || filtered[0];
         nextValid.isCover = true;
-      }
-      // If no photos with errors remain, clear top error
-      const hasErrorsLeft = filtered.some((p) => p.status === 'error');
-      if (!hasErrorsLeft) {
-        setPhotoError(null);
       }
       return filtered;
     });
@@ -236,13 +229,12 @@ export const SubmitGaragePage: React.FC = () => {
     e.preventDefault();
 
     if (!name.trim() || !addressLine1.trim() || !city.trim() || !state.trim() || !postalCode.trim() || !phoneNumber.trim()) {
-      setErrorMessage('Garage Name, Street Address, City, State, PIN Code, and Phone Number are required.');
+      showWarning('Garage Name, Street Address, City, State, PIN Code, and Phone Number are required.');
       return;
     }
 
     try {
       setSubmitting(true);
-      setErrorMessage(null);
 
       let targetGarage = submittedGarage;
 
@@ -276,14 +268,17 @@ export const SubmitGaragePage: React.FC = () => {
         const allUploaded = await uploadPhotosSequentially(targetGarage.id, selectedPhotos);
         if (allUploaded) {
           setIsCompleteSuccess(true);
+          showSuccess(`Workshop listing "${targetGarage.name}" submitted successfully!`);
         } else {
-          setErrorMessage('Workshop listing was created, but one or more photos failed to upload. You can retry uploading the failed photos below without recreating the workshop.');
+          showWarning('Workshop listing was created, but one or more photos failed to upload. You can retry uploading the failed photos below.');
         }
       } else {
         setIsCompleteSuccess(true);
+        showSuccess(`Workshop listing "${targetGarage.name}" submitted successfully!`);
       }
     } catch (err: any) {
-      setErrorMessage(err.message || 'Failed to submit garage listing.');
+      const msg = err.message || 'Failed to submit garage listing.';
+      showError(msg);
     } finally {
       setSubmitting(false);
       setSubmittingStatus('');
@@ -294,15 +289,14 @@ export const SubmitGaragePage: React.FC = () => {
     if (!submittedGarage) return;
     try {
       setSubmitting(true);
-      setErrorMessage(null);
       const allUploaded = await uploadPhotosSequentially(submittedGarage.id, selectedPhotos);
       if (allUploaded) {
         setIsCompleteSuccess(true);
       } else {
-        setErrorMessage('Some photos still failed to upload. Check individual error messages and retry or continue.');
+        showWarning('Some photos still failed to upload. Check individual error messages and retry or continue.');
       }
     } catch (err: any) {
-      setErrorMessage(err.message || 'Retry failed');
+      showError(err.message || 'Retry failed');
     } finally {
       setSubmitting(false);
       setSubmittingStatus('');
@@ -389,15 +383,6 @@ export const SubmitGaragePage: React.FC = () => {
             </Link>
           </div>
         </div>
-      )}
-
-      {errorMessage && (
-        <Alert
-          type="error"
-          message={errorMessage}
-          onClose={() => setErrorMessage(null)}
-          className="mb-6"
-        />
       )}
 
       <form onSubmit={handleSubmit} className="card p-6 space-y-6">
@@ -720,8 +705,6 @@ export const SubmitGaragePage: React.FC = () => {
               Select one or more photos. The first photo is set as the cover by default.
             </span>
           </div>
-
-          {photoError && <Alert type="error" message={photoError} onClose={() => setPhotoError(null)} className="mb-4" />}
 
           {selectedPhotos.length > 0 && (
             <div className="photo-preview-grid mt-3">

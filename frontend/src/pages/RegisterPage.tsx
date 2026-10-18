@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Alert } from '../components/Alert';
 import { GoogleAuthButton } from '../components/GoogleAuthButton';
+import { useToast } from '../context/NotificationContext';
 import {
   safeTrackLeadEvent,
   getActiveSearchSession,
@@ -17,6 +17,7 @@ export const RegisterPage: React.FC = () => {
   const { register, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const { showError, showWarning } = useToast();
 
   const [role, setRole] = useState<'ROLE_USER' | 'ROLE_GARAGE_OWNER'>('ROLE_USER');
   const [fullName, setFullName] = useState('');
@@ -27,7 +28,6 @@ export const RegisterPage: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [marketingConsent, setMarketingConsent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const resolveRegisterDestination = React.useCallback(() => {
     const pending = (location.state?.pendingAction as PendingAction) || getPendingAction();
@@ -68,29 +68,28 @@ export const RegisterPage: React.FC = () => {
     e.preventDefault();
 
     if (!fullName.trim() || !email.trim() || !password) {
-      setErrorMessage('Please fill in all required fields.');
+      showWarning('Please fill in all required fields.');
       return;
     }
 
     if (password.length < 8) {
-      setErrorMessage('Password must be at least 8 characters long.');
+      showWarning('Password must be at least 8 characters long.');
       return;
     }
 
     if (password !== confirmPassword) {
-      setErrorMessage('Passwords do not match.');
+      showWarning('Passwords do not match.');
       return;
     }
 
     const cleanPhone = phone.replace(/\D/g, '');
     if (cleanPhone && cleanPhone.length !== 10) {
-      setErrorMessage('Please enter a valid 10-digit mobile number, or leave it blank.');
+      showWarning('Please enter a valid 10-digit mobile number, or leave it blank.');
       return;
     }
 
     try {
       setSubmitting(true);
-      setErrorMessage(null);
 
       const session = getActiveSearchSession();
       const registrationSource = session?.source || 'landing_page';
@@ -133,7 +132,7 @@ export const RegisterPage: React.FC = () => {
         },
       });
     } catch (err: any) {
-      setErrorMessage(err.message || 'Registration failed. Please verify your details.');
+      showError(err.message || 'Registration failed. Please verify your details.');
     } finally {
       setSubmitting(false);
     }
@@ -184,15 +183,6 @@ export const RegisterPage: React.FC = () => {
           </button>
         </div>
 
-        {errorMessage && (
-          <Alert
-            type="error"
-            message={errorMessage}
-            onClose={() => setErrorMessage(null)}
-            className="mb-4"
-          />
-        )}
-
         {/* Google OAuth Embed */}
         <div className="google-auth-wrapper mb-6">
           <GoogleAuthButton
@@ -203,7 +193,7 @@ export const RegisterPage: React.FC = () => {
               const dest = resolveRegisterDestination();
               navigate(dest.url, { state: dest.state, replace: true });
             }}
-            onError={(err) => setErrorMessage(err)}
+            onError={(err) => showError(err)}
             disabled={submitting}
           />
         </div>

@@ -3,15 +3,14 @@ import { Link } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import type { QuoteRequestDto, QuoteCustomerActionRequest } from '../api/types';
-import { Alert } from '../components/Alert';
 import { Modal } from '../components/Modal';
+import { useToast } from '../context/NotificationContext';
 
 export const MyQuotesPage: React.FC = () => {
   useAuth();
+  const { showSuccess, showError } = useToast();
   const [quotes, setQuotes] = useState<QuoteRequestDto[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
 
   // Filter
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'PENDING' | 'QUOTED' | 'ACCEPTED' | 'HISTORY'>('ALL');
@@ -21,7 +20,6 @@ export const MyQuotesPage: React.FC = () => {
   const [modalAction, setModalAction] = useState<'ACCEPT' | 'DECLINE' | 'CANCEL' | null>(null);
   const [actionNotes, setActionNotes] = useState('');
   const [actionSubmitting, setActionSubmitting] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
 
   // Message reply states (keyed by quote ID)
   const [replyTexts, setReplyTexts] = useState<Record<number, string>>({});
@@ -30,11 +28,10 @@ export const MyQuotesPage: React.FC = () => {
   const loadMyQuotes = useCallback(async () => {
     try {
       setLoading(true);
-      setError(null);
       const data = await api.quotes.getMyRequests();
       setQuotes(data || []);
     } catch (err: any) {
-      setError(err.message || 'Failed to load your quote requests');
+      showError(err.message || 'Failed to load your quote requests');
     } finally {
       setLoading(false);
     }
@@ -51,7 +48,6 @@ export const MyQuotesPage: React.FC = () => {
     setActionModalQuote(quote);
     setModalAction(action);
     setActionNotes('');
-    setActionError(null);
   };
 
   const handleConfirmCustomerAction = async (e: React.FormEvent) => {
@@ -60,7 +56,6 @@ export const MyQuotesPage: React.FC = () => {
 
     try {
       setActionSubmitting(true);
-      setActionError(null);
 
       const payload: QuoteCustomerActionRequest = {
         action: modalAction,
@@ -68,15 +63,15 @@ export const MyQuotesPage: React.FC = () => {
       };
 
       const updated = await api.quotes.customerAction(actionModalQuote.id, payload);
-      setSuccess(
-        `Quote request ${actionModalQuote.referenceNumber} has been updated to ${updated.status}.`
-      );
+      const msg = `Quote request ${actionModalQuote.referenceNumber} has been updated to ${updated.status}.`;
+      showSuccess(msg);
       setActionModalQuote(null);
       setModalAction(null);
       setActionNotes('');
       await loadMyQuotes();
     } catch (err: any) {
-      setActionError(err.message || 'Failed to process action');
+      const msg = err.message || 'Failed to process action';
+      showError(msg);
     } finally {
       setActionSubmitting(false);
     }
@@ -92,8 +87,10 @@ export const MyQuotesPage: React.FC = () => {
       const updated = await api.quotes.addMessage(quoteId, text);
       setQuotes((prev) => prev.map((q) => (q.id === quoteId ? updated : q)));
       setReplyTexts((prev) => ({ ...prev, [quoteId]: '' }));
+      showSuccess('Reply sent to customer.');
     } catch (err: any) {
-      setError(err.message || 'Failed to send message');
+      const msg = err.message || 'Failed to send message';
+      showError(msg);
     } finally {
       setReplyLoadingId(null);
     }
@@ -129,24 +126,6 @@ export const MyQuotesPage: React.FC = () => {
           </Link>
         </div>
       </div>
-
-      {success && (
-        <Alert
-          type="success"
-          message={success}
-          onClose={() => setSuccess(null)}
-          className="mb-6"
-        />
-      )}
-
-      {error && (
-        <Alert
-          type="error"
-          message={error}
-          onClose={() => setError(null)}
-          className="mb-6"
-        />
-      )}
 
       {/* Filter Tabs */}
       <div className="card p-4 mb-6">
@@ -541,8 +520,6 @@ export const MyQuotesPage: React.FC = () => {
           maxWidth="md"
         >
           <form onSubmit={handleConfirmCustomerAction} className="space-y-4">
-            {actionError && <Alert type="error" message={actionError} onClose={() => setActionError(null)} />}
-
             {modalAction === 'ACCEPT' && (
               <div className="space-y-3">
                 <p className="text-xs text-white">

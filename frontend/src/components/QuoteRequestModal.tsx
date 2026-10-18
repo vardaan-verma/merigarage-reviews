@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { Modal } from './Modal';
-import { Alert } from './Alert';
 import { AuthRequiredWarning } from './AuthRequiredWarning';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
+import { useAuthRequired, useToast } from '../context/NotificationContext';
 import type { GarageDetailDto, QuoteRequestDto, VehicleDto } from '../api/types';
 import {
   resolveVehicleDetails,
@@ -62,6 +62,8 @@ export const QuoteRequestModal: React.FC<QuoteRequestModalProps> = ({
   initialFormState,
 }) => {
   const { user, isAuthenticated, isGarageOwner } = useAuth();
+  const requestAuth = useAuthRequired();
+  const { showSuccess, showError, showWarning } = useToast();
 
   // Form states
   const [selectedServiceIds, setSelectedServiceIds] = useState<number[]>([]);
@@ -77,6 +79,7 @@ export const QuoteRequestModal: React.FC<QuoteRequestModalProps> = ({
   const [customerMessage, setCustomerMessage] = useState('');
   const [contactPhone, setContactPhone] = useState('');
   const [contactEmail, setContactEmail] = useState('');
+  const [phoneError, setPhoneError] = useState<string | null>(null);
 
   // User Saved Vehicles states
   const [savedVehicles, setSavedVehicles] = useState<VehicleDto[]>([]);
@@ -84,7 +87,6 @@ export const QuoteRequestModal: React.FC<QuoteRequestModalProps> = ({
 
   // Status states
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [submittedQuote, setSubmittedQuote] = useState<QuoteRequestDto | null>(null);
   const [authWarningShown, setAuthWarningShown] = useState(false);
 
@@ -165,7 +167,6 @@ export const QuoteRequestModal: React.FC<QuoteRequestModalProps> = ({
   // Reset form and prefill known criteria when modal opens
   useEffect(() => {
     if (isOpen) {
-      setError(null);
       setSubmittedQuote(null);
 
       const session = getActiveSearchSession();
@@ -252,34 +253,56 @@ export const QuoteRequestModal: React.FC<QuoteRequestModalProps> = ({
     e.preventDefault();
     if (!isAuthenticated) {
       setAuthWarningShown(true);
-      setError(null);
+      requestAuth({
+        title: 'Sign In Required',
+        message: 'You must be signed in before asking for a quote.',
+        portal: 'customer',
+        actionType: 'QUOTE_REQUEST',
+        returnUrl: window.location.pathname + window.location.search,
+        formState: {
+          selectedServiceIds,
+          vehicleType,
+          vehicleMake,
+          vehicleModel,
+          vehicleYear,
+          fuelType,
+          registrationNumber,
+          odometerReading,
+          preferredDate,
+          problemDescription,
+          customerMessage,
+          contactPhone,
+          contactEmail,
+          selectedSavedVehicleId,
+        },
+      });
       return;
     }
 
     if (selectedServiceIds.length === 0) {
-      setError('Please select at least one service for your quote request.');
+      showWarning('Please select at least one service for your quote request.');
       return;
     }
 
     if (!vehicleMake.trim() || !vehicleModel.trim()) {
-      setError('Please provide both vehicle make/brand and model name.');
+      showWarning('Please provide both vehicle make/brand and model name.');
       return;
     }
 
     if (!problemDescription.trim() || problemDescription.trim().length < 10) {
-      setError('Please describe the problem or requested work (at least 10 characters).');
+      showWarning('Please describe the problem or requested work (at least 10 characters).');
       return;
     }
 
     const cleanPhone = contactPhone.replace(/[^\d]/g, '');
     if (!cleanPhone || cleanPhone.length < 10) {
-      setError('Please provide a valid 10-digit contact phone number.');
+      setPhoneError('Please enter a valid 10-digit mobile number.');
+      showWarning('Please provide a valid 10-digit contact phone number.');
       return;
     }
 
     try {
       setSubmitting(true);
-      setError(null);
 
       const payload = {
         garageId: garage.id,
@@ -330,8 +353,11 @@ export const QuoteRequestModal: React.FC<QuoteRequestModalProps> = ({
       if (onSuccess) {
         onSuccess(result);
       }
+      showSuccess(`Quote request #${result.referenceNumber} submitted successfully!`);
+      onClose();
     } catch (err: any) {
-      setError(err.message || 'Failed to submit quote request. Please try again.');
+      const msg = err.message || 'Failed to submit quote request. Please try again.';
+      showError(msg);
     } finally {
       setSubmitting(false);
     }
@@ -408,8 +434,6 @@ export const QuoteRequestModal: React.FC<QuoteRequestModalProps> = ({
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-6">
-
-          {error && <Alert type="error" message={error} onClose={() => setError(null)} />}
 
           {/* Garage Banner */}
           <div className="p-3 bg-surface rounded-lg border border-border flex items-center justify-between text-xs">
@@ -710,12 +734,18 @@ export const QuoteRequestModal: React.FC<QuoteRequestModalProps> = ({
                 </label>
                 <input
                   type="tel"
-                  className="input text-xs"
+                  className={`input text-xs ${phoneError ? 'border-danger' : ''}`}
                   placeholder="10-digit mobile number"
                   value={contactPhone}
-                  onChange={(e) => setContactPhone(e.target.value)}
+                  onChange={(e) => {
+                    setContactPhone(e.target.value);
+                    setPhoneError(null);
+                  }}
                   required
                 />
+                {phoneError && (
+                  <p className="text-danger text-2xs mt-1">{phoneError}</p>
+                )}
               </div>
 
               <div>

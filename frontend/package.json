@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "test": "node --test test/qrPosterConfig.test.mjs",
+    "test": "node --test test/qrPosterConfig.test.mjs test/notificationSystem.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

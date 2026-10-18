@@ -5,7 +5,7 @@ import type { GarageSummaryDto, PagedResponse, ServiceDto } from '../api/types';
 import { GarageCard } from '../components/GarageCard';
 import { GarageSearchMap } from '../components/GarageSearchMap';
 import { Pagination } from '../components/Pagination';
-import { Alert } from '../components/Alert';
+import { useToast } from '../context/NotificationContext';
 import { StateSelect, CitySelect } from '../components/LocationSelect';
 import { findStateForCity, getCitiesForState } from '../data/indiaLocations';
 import {
@@ -36,6 +36,7 @@ function calculateHaversineDistanceKm(
 }
 
 export const GaragesPage: React.FC = () => {
+  const { showError } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
 
   // URL query state
@@ -108,13 +109,11 @@ export const GaragesPage: React.FC = () => {
   const [selectedGarageId, setSelectedGarageId] = useState<number | null>(null);
   const [showMap, setShowMap] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   // Fetch garages based on current URL params
   const fetchGarages = useCallback(async () => {
     try {
       setLoading(true);
-      setError(null);
 
       const params: Parameters<typeof api.garages.list>[0] = {
         page: pageParam,
@@ -132,11 +131,11 @@ export const GaragesPage: React.FC = () => {
       const res = await api.garages.list(params);
       setGaragesData(res);
     } catch (err: any) {
-      setError(err.message || 'Failed to fetch garages');
+      showError(err.message || 'Failed to fetch garages');
     } finally {
       setLoading(false);
     }
-  }, [cityParam, stateParam, verifiedOnlyParam, serviceSlugParam, searchParam, pageParam]);
+  }, [cityParam, stateParam, verifiedOnlyParam, serviceSlugParam, searchParam, pageParam, showError]);
 
   useEffect(() => {
     fetchGarages();
@@ -458,8 +457,6 @@ export const GaragesPage: React.FC = () => {
           </div>
         </div>
       </div>
-
-      {error && <Alert type="error" message={error} className="mb-6" />}
 
       {/* 2-Column Discovery Layout: Left Filters Sidebar + Right Garage Results */}
       <div className="explore-garages-layout mb-8">

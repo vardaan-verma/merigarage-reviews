@@ -24,6 +24,10 @@ interface GoogleIdClient {
   prompt: (momentListener?: (notification: any) => void) => void;
 }
 
+// Global callback dispatcher for Google Identity Services to ensure initialize() is called only once per page lifecycle
+let activeGisCredentialCallback: ((credential: string) => void) | null = null;
+let gisInitializedGlobally = false;
+
 interface GoogleAuthButtonProps {
   mode?: 'signin' | 'signup';
   roleTab?: 'customer' | 'garage';
@@ -71,11 +75,20 @@ export const GoogleAuthButton: React.FC<GoogleAuthButtonProps> = ({
     }
   };
 
-const getGoogleIdClient = (): GoogleIdClient | undefined => {
-  return (window as any).google?.accounts?.id;
-};
+  useEffect(() => {
+    activeGisCredentialCallback = (credential: string) => {
+      handleCredentialResponse(credential);
+    };
+    return () => {
+      activeGisCredentialCallback = null;
+    };
+  });
 
-// Initialize official Google Identity Services button if Client ID is configured
+  const getGoogleIdClient = (): GoogleIdClient | undefined => {
+    return (window as any).google?.accounts?.id;
+  };
+
+  // Initialize official Google Identity Services button if Client ID is configured
   useEffect(() => {
     if (!isGisConfigured) return;
 
@@ -86,26 +99,35 @@ const getGoogleIdClient = (): GoogleIdClient | undefined => {
       if (!googleId || !googleBtnContainerRef.current) return;
 
       try {
-        googleId.initialize({
-          client_id: clientId.trim(),
-          callback: (response: { credential: string }) => {
-            if (isMounted && response?.credential) {
-              handleCredentialResponse(response.credential);
-            }
-          },
-          auto_select: false,
-          cancel_on_tap_outside: true,
-        });
+        if (!gisInitializedGlobally) {
+          googleId.initialize({
+            client_id: clientId.trim(),
+            callback: (response: { credential: string }) => {
+              if (response?.credential && activeGisCredentialCallback) {
+                activeGisCredentialCallback(response.credential);
+              }
+            },
+            auto_select: false,
+            cancel_on_tap_outside: true,
+          });
+          gisInitializedGlobally = true;
+        }
+
+        if (!isMounted || !googleBtnContainerRef.current) return;
 
         // Clear previous render
         googleBtnContainerRef.current.innerHTML = '';
+
+        // GIS width must be a pixel integer — '100%' is invalid
+        const containerWidth = googleBtnContainerRef.current.offsetWidth || 400;
+        const btnWidth = Math.min(Math.max(containerWidth, 200), 400);
 
         googleId.renderButton(googleBtnContainerRef.current, {
           theme: 'outline',
           size: 'large',
           text: mode === 'signup' ? 'signup_with' : 'continue_with',
           shape: 'pill',
-          width: '100%',
+          width: btnWidth,
           logo_alignment: 'left',
         });
       } catch (e) {
@@ -131,7 +153,7 @@ const getGoogleIdClient = (): GoogleIdClient | undefined => {
     return () => {
       isMounted = false;
     };
-  }, [clientId, isGisConfigured, mode, roleTab]);
+  }, [clientId, isGisConfigured, mode]);
 
   const handleCustomButtonClick = () => {
     if (disabled || loading) return;
