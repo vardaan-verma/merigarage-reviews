@@ -9,6 +9,7 @@ import com.merigarage.reviews.domain.enums.GarageApprovalStatus;
 import com.merigarage.reviews.exception.ResourceNotFoundException;
 import com.merigarage.reviews.security.SecurityContextService;
 import com.merigarage.reviews.service.GarageService;
+import com.merigarage.reviews.service.ReviewReportService;
 import com.merigarage.reviews.service.ReviewService;
 import com.merigarage.reviews.service.dto.*;
 import jakarta.validation.Valid;
@@ -21,19 +22,24 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
 public class ReviewController {
 
     private final ReviewService reviewService;
     private final GarageService garageService;
     private final SecurityContextService securityContextService;
+    private final ReviewReportService reviewReportService;
 
     public ReviewController(ReviewService reviewService,
                             GarageService garageService,
-                            SecurityContextService securityContextService) {
+                            SecurityContextService securityContextService,
+                            ReviewReportService reviewReportService) {
         this.reviewService = reviewService;
         this.garageService = garageService;
         this.securityContextService = securityContextService;
+        this.reviewReportService = reviewReportService;
     }
 
     @GetMapping("/api/garages/{garageId}/reviews")
@@ -66,6 +72,13 @@ public class ReviewController {
         return ResponseEntity.ok(PagedResponse.fromPage(dtoPage));
     }
 
+    @GetMapping("/api/reviews/my-reviews")
+    public ResponseEntity<List<UserReviewDto>> getMyReviews() {
+        User currentUser = securityContextService.getRequiredCurrentUser();
+        List<UserReviewDto> reviews = reviewService.getUserReviews(currentUser.getId());
+        return ResponseEntity.ok(reviews);
+    }
+
     @PostMapping("/api/garages/{garageId}/reviews")
     public ResponseEntity<ReviewDto> createReview(
             @PathVariable Long garageId,
@@ -95,6 +108,17 @@ public class ReviewController {
         User currentUser = securityContextService.getRequiredCurrentUser();
         ReviewResponse response = reviewService.respondToReview(id, request.responseText(), currentUser);
         return ResponseEntity.status(HttpStatus.CREATED).body(ReviewResponseDto.fromEntity(response));
+    }
+
+    @PostMapping("/api/garages/{garageId}/reviews/{reviewId}/report")
+    public ResponseEntity<ReviewReportDto> reportReview(
+            @PathVariable Long garageId,
+            @PathVariable Long reviewId,
+            @Valid @RequestBody CreateReviewReportRequest request
+    ) {
+        User currentUser = securityContextService.getRequiredCurrentUser();
+        ReviewReportDto report = reviewReportService.createReport(garageId, reviewId, request, currentUser);
+        return ResponseEntity.status(HttpStatus.CREATED).body(report);
     }
 
     @DeleteMapping("/api/admin/reviews/{id}")

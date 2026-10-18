@@ -25,6 +25,7 @@ public record AdminGarageDetailDto(
         String googleMapsUrl,
         GarageApprovalStatus approvalStatus,
         Boolean isVerified,
+        Long coverPhotoId,
         Long ownerId,
         String ownerName,
         String ownerEmail,
@@ -41,6 +42,16 @@ public record AdminGarageDetailDto(
             List<String> services,
             int documentsCount,
             List<GarageApprovalAuditDto> approvalHistory
+    ) {
+        return fromEntity(g, services, documentsCount, approvalHistory, null);
+    }
+
+    public static AdminGarageDetailDto fromEntity(
+            Garage g,
+            List<String> services,
+            int documentsCount,
+            List<GarageApprovalAuditDto> approvalHistory,
+            Long coverPhotoId
     ) {
         return new AdminGarageDetailDto(
                 g.getId(),
@@ -60,6 +71,7 @@ public record AdminGarageDetailDto(
                 g.getGoogleMapsUrl(),
                 g.getApprovalStatus(),
                 g.getIsVerified(),
+                coverPhotoId,
                 g.getOwner() != null ? g.getOwner().getId() : null,
                 g.getOwner() != null ? g.getOwner().getFullName() : null,
                 g.getOwner() != null ? g.getOwner().getEmail() : null,

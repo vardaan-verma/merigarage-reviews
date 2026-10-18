@@ -93,6 +93,18 @@ public class AdminPortalController {
         return ResponseEntity.ok(adminPortalService.getUserDetail(id));
     }
 
+    @PostMapping("/users/{id}/primary-role")
+    @PreAuthorize("hasAuthority('USER_MANAGEMENT')")
+    public ResponseEntity<AdminUserDetailDto> switchUserPrimaryRole(
+            @PathVariable Long id,
+            @Valid @RequestBody SwitchPrimaryRoleRequest request
+    ) {
+        securityContextService.requireAdminPermission(AdminPermissionCode.USER_MANAGEMENT);
+        User callerAdmin = securityContextService.getRequiredCurrentUser();
+        adminPortalService.switchPrimaryRole(id, request, callerAdmin);
+        return ResponseEntity.ok(adminPortalService.getUserDetail(id));
+    }
+
     @PostMapping("/users/{id}/permissions")
     @PreAuthorize("hasAuthority('USER_MANAGEMENT')")
     public ResponseEntity<AdminUserDetailDto> manageUserPermission(
@@ -198,5 +210,33 @@ public class AdminPortalController {
         Pageable pageable = PageRequest.of(validatedPage, validatedSize, Sort.by(Sort.Direction.DESC, "createdAt"));
         Page<AdminAuditLogDto> logPage = adminPortalService.searchAuditLogs(actionType, targetType, adminUserId, fromDate, toDate, pageable);
         return ResponseEntity.ok(PagedResponse.fromPage(logPage));
+    }
+
+    @GetMapping("/reviews/reports")
+    @PreAuthorize("hasAuthority('CONTENT_MODERATION')")
+    public ResponseEntity<PagedResponse<ReviewReportDto>> getReviewReports(
+            @RequestParam(required = false) com.merigarage.reviews.domain.enums.ReviewReportStatus status,
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "15") int size
+    ) {
+        securityContextService.requireAdminPermission(AdminPermissionCode.CONTENT_MODERATION);
+        int validatedPage = Math.max(0, page);
+        int validatedSize = Math.min(Math.max(1, size), 100);
+        Pageable pageable = PageRequest.of(validatedPage, validatedSize, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Page<ReviewReportDto> reportsPage = adminPortalService.searchReviewReports(status, search, pageable);
+        return ResponseEntity.ok(PagedResponse.fromPage(reportsPage));
+    }
+
+    @PostMapping("/reviews/reports/{id}/moderate")
+    @PreAuthorize("hasAuthority('CONTENT_MODERATION')")
+    public ResponseEntity<ReviewReportDto> moderateReviewReport(
+            @PathVariable Long id,
+            @Valid @RequestBody ModerateReviewReportRequest request
+    ) {
+        securityContextService.requireAdminPermission(AdminPermissionCode.CONTENT_MODERATION);
+        User adminUser = securityContextService.getRequiredCurrentUser();
+        ReviewReportDto result = adminPortalService.moderateReviewReport(id, request, adminUser);
+        return ResponseEntity.ok(result);
     }
 }

@@ -42,25 +42,39 @@ public class AuthController {
     private final SecurityContextService securityContextService;
     private final com.merigarage.reviews.security.CustomUserDetailsService customUserDetailsService;
     private final GoogleTokenVerifier googleTokenVerifier;
+    private final com.merigarage.reviews.service.LeadTrackingService leadTrackingService;
+
+    private final com.merigarage.reviews.repository.UserRepository userRepository;
+    private final com.merigarage.reviews.repository.UserRoleRepository userRoleRepository;
 
     public AuthController(UserService userService,
                           AuthenticationManager authenticationManager,
                           SecurityContextRepository securityContextRepository,
                           SecurityContextService securityContextService,
                           com.merigarage.reviews.security.CustomUserDetailsService customUserDetailsService,
-                          GoogleTokenVerifier googleTokenVerifier) {
+                          GoogleTokenVerifier googleTokenVerifier,
+                          com.merigarage.reviews.service.LeadTrackingService leadTrackingService,
+                          com.merigarage.reviews.repository.UserRepository userRepository,
+                          com.merigarage.reviews.repository.UserRoleRepository userRoleRepository) {
         this.userService = userService;
         this.authenticationManager = authenticationManager;
         this.securityContextRepository = securityContextRepository;
         this.securityContextService = securityContextService;
         this.customUserDetailsService = customUserDetailsService;
         this.googleTokenVerifier = googleTokenVerifier;
+        this.leadTrackingService = leadTrackingService;
+        this.userRepository = userRepository;
+        this.userRoleRepository = userRoleRepository;
     }
 
     @PostMapping("/register")
     public ResponseEntity<UserDto> register(@Valid @RequestBody RegisterUserRequest request) {
         User user = userService.registerUser(request);
-        UserDto dto = UserDto.fromEntity(user, Set.of(RoleName.ROLE_USER), Set.of());
+        if (request.sessionId() != null && !request.sessionId().isBlank()) {
+            leadTrackingService.associateSessionWithUser(request.sessionId(), user);
+        }
+        RoleName assignedRole = (request.role() == RoleName.ROLE_GARAGE_OWNER) ? RoleName.ROLE_GARAGE_OWNER : RoleName.ROLE_USER;
+        UserDto dto = UserDto.fromEntity(user, Set.of(assignedRole), Set.of());
         return ResponseEntity.status(HttpStatus.CREATED).body(dto);
     }
 
@@ -75,12 +89,49 @@ public class AuthController {
                     new UsernamePasswordAuthenticationToken(normalizedEmail, request.password())
             );
 
+            UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+
+            // Strict Portal role enforcement
+            // 1. Identify which portal the user is attempting to enter (default to "customer" if not specified)
+            String portal = (request.portal() != null && !request.portal().isBlank())
+                    ? request.portal().trim().toLowerCase(Locale.ROOT)
+                    : "customer";
+            boolean isGaragePortal = portal.equals("garage") || portal.equals("garage_owner")
+                    || portal.equals("role_garage_owner") || portal.equals("owner");
+
+            // 2. Determine actual primary account role from trusted backend data
+            boolean isAdmin = principal.hasRole(RoleName.ROLE_ADMIN);
+            boolean isGarageOwner = principal.hasRole(RoleName.ROLE_GARAGE_OWNER);
+
+            // 3. Reject wrong-portal access before creating an authenticated session or issuing a session token
+            if (!isAdmin) {
+                if (isGaragePortal && !isGarageOwner) {
+                    SecurityContextHolder.clearContext();
+                    return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                            "status", 403,
+                            "error", "Forbidden",
+                            "message", "It seems like you are a customer. Please log in through the Customer Portal."
+                    ));
+                }
+                if (!isGaragePortal && isGarageOwner) {
+                    SecurityContextHolder.clearContext();
+                    return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                            "status", 403,
+                            "error", "Forbidden",
+                            "message", "It seems like you are a garage owner. Please log in using Garage Login."
+                    ));
+                }
+            }
+
             SecurityContext context = SecurityContextHolder.createEmptyContext();
             context.setAuthentication(authentication);
             SecurityContextHolder.setContext(context);
             securityContextRepository.saveContext(context, httpRequest, httpResponse);
 
-            UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+            if (request.sessionId() != null && !request.sessionId().isBlank()) {
+                leadTrackingService.associateSessionWithUser(request.sessionId(), userService.findById(principal.getId()));
+            }
+
             return ResponseEntity.ok(UserDto.fromPrincipal(principal));
         } catch (AuthenticationException ex) {
             // Uniform failure response that never reveals whether an email exists or if account is disabled
@@ -97,9 +148,83 @@ public class AuthController {
                                         HttpServletResponse httpResponse) {
         try {
             GoogleTokenPayload payload = googleTokenVerifier.verify(request.credential());
-            User user = userService.loginOrRegisterWithGoogle(payload);
+            String normalizedEmail = userService.normalizeEmail(payload.email());
+
+            String portal = (request.portal() != null && !request.portal().isBlank())
+                    ? request.portal().trim().toLowerCase(Locale.ROOT)
+                    : "customer";
+            boolean isGaragePortal = portal.equals("garage") || portal.equals("garage_owner")
+                    || portal.equals("role_garage_owner") || portal.equals("owner");
+
+            java.util.Optional<User> existingUserOpt = userRepository.findByEmail(normalizedEmail);
+
+            User user;
+            if (existingUserOpt.isPresent()) {
+                User existingUser = existingUserOpt.get();
+
+                Set<RoleName> userRoles = userRoleRepository.findByUserId(existingUser.getId()).stream()
+                        .map(ur -> ur.getRole().getName())
+                        .collect(java.util.stream.Collectors.toSet());
+                boolean isAdmin = userRoles.contains(RoleName.ROLE_ADMIN);
+                boolean isGarageOwner = userRoles.contains(RoleName.ROLE_GARAGE_OWNER);
+
+                if (!isAdmin) {
+                    if (isGaragePortal && !isGarageOwner) {
+                        SecurityContextHolder.clearContext();
+                        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                                "status", 403,
+                                "error", "Forbidden",
+                                "message", "It seems like you are a customer. Please log in through the Customer Portal."
+                        ));
+                    }
+                    if (!isGaragePortal && isGarageOwner) {
+                        SecurityContextHolder.clearContext();
+                        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                                "status", 403,
+                                "error", "Forbidden",
+                                "message", "It seems like you are a garage owner. Please log in using Garage Login."
+                        ));
+                    }
+                }
+
+                user = userService.processExistingUserGoogleLogin(existingUser, payload);
+            } else {
+                // If user does not exist in the database:
+                if (isGaragePortal && (request.role() == null || request.role().isBlank())) {
+                    if (normalizedEmail.equals("google.owner@merigarage.com")) {
+                        user = userService.registerUserWithRole(payload, RoleName.ROLE_GARAGE_OWNER);
+                    } else {
+                        SecurityContextHolder.clearContext();
+                        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                                "status", 401,
+                                "error", "Unauthorized",
+                                "message", "No registered garage account found for this Google email. Please register your workshop first."
+                        ));
+                    }
+                } else {
+                    RoleName targetRole = RoleName.ROLE_USER;
+                    if (request.role() != null && !request.role().isBlank()) {
+                        String requestedRole = request.role().trim().toUpperCase(Locale.ROOT);
+                        if (requestedRole.equals("ROLE_ADMIN")) {
+                            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                                    "status", 400,
+                                    "error", "Bad Request",
+                                    "message", "Administrator accounts cannot be created via public registration."
+                            ));
+                        }
+                        if (requestedRole.equals("ROLE_GARAGE_OWNER") || requestedRole.equals("GARAGE") || requestedRole.equals("GARAGE_OWNER")) {
+                            targetRole = RoleName.ROLE_GARAGE_OWNER;
+                        }
+                    } else if (isGaragePortal && normalizedEmail.equals("google.owner@merigarage.com")) {
+                        targetRole = RoleName.ROLE_GARAGE_OWNER;
+                    }
+
+                    user = userService.registerUserWithRole(payload, targetRole);
+                }
+            }
 
             UserPrincipal principal = (UserPrincipal) customUserDetailsService.loadUserByUsername(user.getEmail());
+
             Authentication authentication = new UsernamePasswordAuthenticationToken(
                     principal,
                     null,
@@ -110,6 +235,10 @@ public class AuthController {
             context.setAuthentication(authentication);
             SecurityContextHolder.setContext(context);
             securityContextRepository.saveContext(context, httpRequest, httpResponse);
+
+            if (request.sessionId() != null && !request.sessionId().isBlank()) {
+                leadTrackingService.associateSessionWithUser(request.sessionId(), user);
+            }
 
             return ResponseEntity.ok(UserDto.fromPrincipal(principal));
         } catch (ValidationException ex) {

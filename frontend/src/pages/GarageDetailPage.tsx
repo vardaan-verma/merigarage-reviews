@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useLocation } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import type {
@@ -14,12 +14,16 @@ import { Pagination } from '../components/Pagination';
 import { Alert } from '../components/Alert';
 import { Modal } from '../components/Modal';
 import { QuoteRequestModal } from '../components/QuoteRequestModal';
+import { AuthRequiredWarning } from '../components/AuthRequiredWarning';
+import { GarageReviewPosterModal } from '../components/GarageReviewPosterModal';
+import { UserAvatar } from '../components/UserAvatar';
+import { consumePendingAction } from '../utils/pendingActionStorage';
 import { safeTrackLeadEvent, getActiveSearchSession } from '../utils/searchSession';
 
 export const GarageDetailPage: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
   const { user, isAuthenticated, hasRole, hasPermission } = useAuth();
-  const navigate = useNavigate();
+  const location = useLocation();
 
   const [garage, setGarage] = useState<GarageDetailDto | null>(null);
   const [reviewsData, setReviewsData] = useState<PagedResponse<ReviewDto> | null>(null);
@@ -34,9 +38,14 @@ export const GarageDetailPage: React.FC = () => {
 
   // Quote Request Modal State
   const [isQuoteModalOpen, setIsQuoteModalOpen] = useState(false);
+  const [quoteInitialState, setQuoteInitialState] = useState<Record<string, any> | undefined>(undefined);
+
+  // Review Poster Modal State
+  const [isPosterModalOpen, setIsPosterModalOpen] = useState(false);
 
   // Review Modal State
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+  const [reviewAuthWarning, setReviewAuthWarning] = useState(false);
   const [editingReviewId, setEditingReviewId] = useState<number | null>(null);
   const [ratingQuality, setRatingQuality] = useState(0);
   const [ratingPricing, setRatingPricing] = useState(0);
@@ -56,6 +65,7 @@ export const GarageDetailPage: React.FC = () => {
 
   // Claim Modal State
   const [isClaimModalOpen, setIsClaimModalOpen] = useState(false);
+  const [claimAuthWarning, setClaimAuthWarning] = useState(false);
   const [claimMessage, setClaimMessage] = useState('');
   const [claimantName, setClaimantName] = useState('');
   const [claimantPhone, setClaimantPhone] = useState('');
@@ -76,6 +86,13 @@ export const GarageDetailPage: React.FC = () => {
   const [deletingReviewId, setDeletingReviewId] = useState<number | null>(null);
   const [deleteReason, setDeleteReason] = useState('');
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+
+  // Workshop Owner Report Review State
+  const [reportingReview, setReportingReview] = useState<ReviewDto | null>(null);
+  const [reportReason, setReportReason] = useState<string>('OFFENSIVE_CONTENT');
+  const [reportDetails, setReportDetails] = useState('');
+  const [reportSubmitting, setReportSubmitting] = useState(false);
+  const [reportError, setReportError] = useState<string | null>(null);
 
   // Fetch Garage Details
   const fetchGarage = useCallback(async () => {
@@ -137,12 +154,65 @@ export const GarageDetailPage: React.FC = () => {
     }
   }, [garage, reviewPage, fetchReviews]);
 
+  // Auto-open review modal if directed via QR code or direct review action link (?action=review)
+  useEffect(() => {
+    if (garage) {
+      const sp = new URLSearchParams(location.search);
+      if (
+        sp.get('action') === 'review' ||
+        sp.get('review') === 'true' ||
+        location.hash === '#review'
+      ) {
+        setIsReviewModalOpen(true);
+      }
+    }
+  }, [garage, location.search, location.hash]);
+
+  // Check for restored protected action after returning from login
+  useEffect(() => {
+    const restored =
+      (location.state?.restoredAction as any) ||
+      consumePendingAction(window.location.pathname);
+
+    if (!restored) return;
+
+    if (restored.actionType === 'QUOTE_REQUEST') {
+      if (restored.formState) {
+        setQuoteInitialState(restored.formState);
+      }
+      setIsQuoteModalOpen(true);
+    } else if (
+      restored.actionType === 'WRITE_REVIEW' ||
+      restored.actionType === 'EDIT_REVIEW'
+    ) {
+      if (restored.formState) {
+        const fs = restored.formState;
+        if (fs.ratingQuality) setRatingQuality(fs.ratingQuality);
+        if (fs.ratingPricing) setRatingPricing(fs.ratingPricing);
+        if (fs.ratingTimeline) setRatingTimeline(fs.ratingTimeline);
+        if (fs.ratingCommunication) setRatingCommunication(fs.ratingCommunication);
+        if (fs.reviewTitle) setReviewTitle(fs.reviewTitle);
+        if (fs.reviewText) setReviewText(fs.reviewText);
+        if (fs.editingReviewId) setEditingReviewId(fs.editingReviewId);
+      }
+      setIsReviewModalOpen(true);
+    } else if (restored.actionType === 'CLAIM_GARAGE') {
+      if (restored.formState) {
+        const fs = restored.formState;
+        if (fs.claimantName) setClaimantName(fs.claimantName);
+        if (fs.claimantPhone) setClaimantPhone(fs.claimantPhone);
+        if (fs.claimantEmail) setClaimantEmail(fs.claimantEmail);
+        if (fs.businessRegNumber) setBusinessRegNumber(fs.businessRegNumber);
+        if (fs.claimDocType) setClaimDocType(fs.claimDocType);
+        if (fs.claimMessage) setClaimMessage(fs.claimMessage);
+      }
+      setIsClaimModalOpen(true);
+    }
+  }, [location.state]);
+
   // Open Write / Edit Review Modal
   const handleOpenReviewModal = (existing?: ReviewDto) => {
-    if (!isAuthenticated) {
-      navigate('/login');
-      return;
-    }
+    setReviewAuthWarning(false);
     if (existing) {
       setEditingReviewId(existing.id);
       setRatingQuality(existing.ratingServiceQuality ?? existing.serviceQuality ?? 0);
@@ -168,6 +238,12 @@ export const GarageDetailPage: React.FC = () => {
   const handleReviewSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!garage || reviewSubmitting) return;
+
+    if (!isAuthenticated) {
+      setReviewAuthWarning(true);
+      setReviewError(null);
+      return;
+    }
 
     const errors: {
       quality?: string;
@@ -238,10 +314,7 @@ export const GarageDetailPage: React.FC = () => {
 
   // Open Claim Modal
   const handleOpenClaimModal = () => {
-    if (!isAuthenticated) {
-      navigate('/login');
-      return;
-    }
+    setClaimAuthWarning(false);
     setClaimMessage('');
     setClaimantName(user?.fullName || '');
     setClaimantEmail(user?.email || '');
@@ -256,6 +329,12 @@ export const GarageDetailPage: React.FC = () => {
   const handleClaimSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!garage || claimSubmitting) return;
+
+    if (!isAuthenticated) {
+      setClaimAuthWarning(true);
+      setClaimError(null);
+      return;
+    }
 
     if (!claimMessage.trim()) {
       setClaimError('Please provide an ownership statement explaining your legal or operational relationship to this workshop.');
@@ -331,6 +410,33 @@ export const GarageDetailPage: React.FC = () => {
       setError(err.message || 'Failed to delete review.');
     } finally {
       setDeleteSubmitting(false);
+    }
+  };
+
+  // Workshop Owner Report Review Submit
+  const handleOpenReportModal = (rev: ReviewDto) => {
+    setReportingReview(rev);
+    setReportReason('OFFENSIVE_CONTENT');
+    setReportDetails('');
+    setReportError(null);
+  };
+
+  const handleReportSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reportingReview || !garage || reportSubmitting) return;
+    try {
+      setReportSubmitting(true);
+      setReportError(null);
+      await api.reviews.report(garage.id, reportingReview.id, {
+        reportReason,
+        details: reportDetails.trim() || undefined,
+      });
+      setReportingReview(null);
+      setActionSuccess('Your review report has been submitted to platform administrators for investigation.');
+    } catch (err: any) {
+      setReportError(err.message || 'Failed to submit review report.');
+    } finally {
+      setReportSubmitting(false);
     }
   };
 
@@ -482,6 +588,17 @@ export const GarageDetailPage: React.FC = () => {
             >
               <span className="material-symbols-outlined text-base">rate_review</span>
               Write Review
+            </button>
+
+            <button
+              type="button"
+              className="btn btn-secondary inline-flex items-center gap-2 cursor-pointer"
+              onClick={() => setIsPosterModalOpen(true)}
+              title="Generate or print official QR Review Poster for this workshop"
+              id="get-poster-btn"
+            >
+              <span className="material-symbols-outlined text-base">qr_code_2</span>
+              QR Poster
             </button>
 
             {!garage.hasOwner ? (
@@ -670,9 +787,11 @@ export const GarageDetailPage: React.FC = () => {
                   >
                     <div className="flex-between items-start mb-3">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-primary font-bold text-sm">
-                          {(rev.authorFullName || 'U').charAt(0).toUpperCase()}
-                        </div>
+                        <UserAvatar
+                          photoUrl={rev.authorProfilePhotoUrl}
+                          name={rev.authorFullName}
+                          size="md"
+                        />
                         <div>
                           <div className="flex items-center gap-2">
                             <span className="font-bold text-sm text-white">{rev.authorFullName}</span>
@@ -703,6 +822,16 @@ export const GarageDetailPage: React.FC = () => {
                               ✏️ Edit
                             </button>
                           )}
+                        {isOwner && user && user.id !== rev.authorUserId && (
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-xs text-warning hover:text-white"
+                            onClick={() => handleOpenReportModal(rev)}
+                            title="Report this review for policy violation"
+                          >
+                            🚩 Report
+                          </button>
+                        )}
                         {canModerate && (
                           <button
                             type="button"
@@ -978,6 +1107,7 @@ export const GarageDetailPage: React.FC = () => {
         title={editingReviewId ? 'Edit Your Review' : `Review ${garage.name}`}
       >
         <form onSubmit={handleReviewSubmit} className="space-y-4">
+
           {reviewError && <Alert type="error" message={reviewError} className="mb-3" />}
 
           <p className="text-xs text-secondary">
@@ -1097,6 +1227,31 @@ export const GarageDetailPage: React.FC = () => {
             )}
           </div>
 
+          {/* Inline Auth Warning when unauthenticated visitor attempts review submission */}
+          {reviewAuthWarning && !isAuthenticated && (
+            <div className="pt-1">
+              <AuthRequiredWarning
+                message={
+                  editingReviewId
+                    ? 'You must be signed in before editing a review.'
+                    : 'You must be signed in before writing a review.'
+                }
+                portal="customer"
+                actionType={editingReviewId ? 'EDIT_REVIEW' : 'WRITE_REVIEW'}
+                returnUrl={window.location.pathname + window.location.search}
+                formState={{
+                  ratingQuality,
+                  ratingPricing,
+                  ratingTimeline,
+                  ratingCommunication,
+                  reviewTitle,
+                  reviewText,
+                  editingReviewId,
+                }}
+              />
+            </div>
+          )}
+
           <div className="modal-actions">
             <button
               type="button"
@@ -1123,6 +1278,7 @@ export const GarageDetailPage: React.FC = () => {
         title={`Claim Ownership: ${garage.name}`}
       >
         <form onSubmit={handleClaimSubmit} className="space-y-4">
+
           {claimError && <Alert type="error" message={claimError} className="mb-3" />}
 
           <div className="bg-elevated p-3 rounded-lg border border-border text-xs text-secondary leading-relaxed">
@@ -1249,6 +1405,26 @@ export const GarageDetailPage: React.FC = () => {
             />
           </div>
 
+          {/* Inline Auth Warning when unauthenticated visitor attempts claim submission */}
+          {claimAuthWarning && !isAuthenticated && (
+            <div className="pt-1">
+              <AuthRequiredWarning
+                message="You must be signed in before submitting a garage claim."
+                portal="garage"
+                actionType="CLAIM_GARAGE"
+                returnUrl={window.location.pathname + window.location.search}
+                formState={{
+                  claimantName,
+                  claimantPhone,
+                  claimantEmail,
+                  businessRegNumber,
+                  claimDocType,
+                  claimMessage,
+                }}
+              />
+            </div>
+          )}
+
           <div className="modal-actions">
             <button
               type="button"
@@ -1312,17 +1488,97 @@ export const GarageDetailPage: React.FC = () => {
         </div>
       </Modal>
 
+      {/* Workshop Owner Report Review Modal */}
+      <Modal
+        isOpen={!!reportingReview}
+        onClose={() => setReportingReview(null)}
+        title="Report Customer Review"
+      >
+        {reportingReview && (
+          <form onSubmit={handleReportSubmit} className="space-y-4 text-xs">
+            <p className="text-secondary leading-relaxed">
+              If you believe this review violates MeriGarage content policies (e.g. offensive language, fake or competitor posting, or extortion), report it to the platform administration for moderation.
+            </p>
+
+            <div className="p-3 bg-secondary/10 rounded-xl border border-border/20">
+              <span className="text-2xs text-muted block mb-0.5">
+                Reported Review by <strong>{reportingReview.authorFullName}</strong>:
+              </span>
+              <p className="text-white italic text-2xs line-clamp-3">"{reportingReview.reviewText}"</p>
+            </div>
+
+            {reportError && <Alert type="error" message={reportError} className="mb-2" />}
+
+            <div>
+              <label className="label text-xs">Reason for Reporting</label>
+              <select
+                className="input input-sm w-full"
+                value={reportReason}
+                onChange={(e) => setReportReason(e.target.value)}
+              >
+                <option value="OFFENSIVE_CONTENT">Abusive, Profane or Offensive Content</option>
+                <option value="SPAM_OR_FAKE">Spam, Promotional, or Fake Review</option>
+                <option value="CONFLICT_OF_INTEREST">Conflict of Interest or Competitor Post</option>
+                <option value="HARASSMENT">Harassment, Defamation, or Extortion</option>
+                <option value="OTHER">Other Policy Violation</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="label text-xs">
+                Additional Context / Evidence <span className="text-muted">(Optional)</span>
+              </label>
+              <textarea
+                className="input input-sm w-full h-24 text-xs"
+                placeholder="Explain why this review is fraudulent or abusive (e.g. customer never visited, no job card on record)..."
+                value={reportDetails}
+                onChange={(e) => setReportDetails(e.target.value)}
+                maxLength={1000}
+              ></textarea>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-border/20">
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => setReportingReview(null)}
+                disabled={reportSubmitting}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="btn btn-warning btn-sm"
+                disabled={reportSubmitting}
+              >
+                {reportSubmitting ? 'Submitting Report...' : 'Submit Report'}
+              </button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
       {/* Quote Request Modal */}
       {garage && (
         <QuoteRequestModal
           isOpen={isQuoteModalOpen}
           onClose={() => setIsQuoteModalOpen(false)}
           garage={garage}
+          initialFormState={quoteInitialState}
           onSuccess={() => {
             setActionSuccess(
               'Your quote request has been submitted to the workshop! You can track its status and communicate with the owner in My Quotes.'
             );
           }}
+        />
+      )}
+
+      {/* Workshop Review Poster Modal */}
+      {garage && (
+        <GarageReviewPosterModal
+          isOpen={isPosterModalOpen}
+          onClose={() => setIsPosterModalOpen(false)}
+          garage={garage}
         />
       )}
     </div>

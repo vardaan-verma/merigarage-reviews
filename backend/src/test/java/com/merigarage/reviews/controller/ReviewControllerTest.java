@@ -403,4 +403,29 @@ class ReviewControllerTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.message").value("Reviews for unapproved garages are not publicly accessible."));
     }
+
+    @Test
+    void getMyReviews_ReturnsAuthorReviewsWithGarageOwnerResponse() throws Exception {
+        Review review = reviewService.createReview(approvedGarage.getId(), new CreateReviewRequest(
+                (byte) 5, (byte) 5, (byte) 5, (byte) 5, "My visit", "Superb service and repair!"
+        ), authorUser);
+
+        reviewService.respondToReview(review.getId(), "Thank you so much for visiting us!", ownerUser);
+
+        MockHttpSession authorSession = login(authorUser.getEmail());
+
+        mockMvc.perform(get("/api/reviews/my-reviews")
+                        .session(authorSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(review.getId()))
+                .andExpect(jsonPath("$[0].garageName").value(approvedGarage.getName()))
+                .andExpect(jsonPath("$[0].response.responseText").value("Thank you so much for visiting us!"));
+
+        // Other user cannot see author's review in their private collection
+        MockHttpSession otherSession = login(otherUser.getEmail());
+        mockMvc.perform(get("/api/reviews/my-reviews")
+                        .session(otherSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isEmpty());
+    }
 }

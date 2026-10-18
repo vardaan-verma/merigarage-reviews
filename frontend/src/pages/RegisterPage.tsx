@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Alert } from '../components/Alert';
 import { GoogleAuthButton } from '../components/GoogleAuthButton';
@@ -7,11 +7,18 @@ import {
   safeTrackLeadEvent,
   getActiveSearchSession,
 } from '../utils/searchSession';
+import {
+  getPendingAction,
+  isValidInternalReturnUrl,
+  type PendingAction,
+} from '../utils/pendingActionStorage';
 
 export const RegisterPage: React.FC = () => {
   const { register, isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
+  const [role, setRole] = useState<'ROLE_USER' | 'ROLE_GARAGE_OWNER'>('ROLE_USER');
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -21,6 +28,23 @@ export const RegisterPage: React.FC = () => {
   const [marketingConsent, setMarketingConsent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const resolveRegisterDestination = React.useCallback(() => {
+    const pending = (location.state?.pendingAction as PendingAction) || getPendingAction();
+    if (pending && isValidInternalReturnUrl(pending.returnUrl)) {
+      return { url: pending.returnUrl, state: { restoredAction: pending } };
+    }
+    return { url: '/profile', state: undefined };
+  }, [location.state]);
+
+  // Sync role from query parameter if provided (?role=garage)
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const roleParam = params.get('role');
+    if (roleParam === 'garage' || roleParam === 'owner' || roleParam === 'ROLE_GARAGE_OWNER') {
+      setRole('ROLE_GARAGE_OWNER');
+    }
+  }, [location.search]);
 
   // Track distinct event: Visitor begins sign-up
   useEffect(() => {
@@ -35,9 +59,10 @@ export const RegisterPage: React.FC = () => {
 
   useEffect(() => {
     if (isAuthenticated) {
-      navigate('/profile', { replace: true });
+      const dest = resolveRegisterDestination();
+      navigate(dest.url, { state: dest.state, replace: true });
     }
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated, navigate, resolveRegisterDestination]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,13 +96,14 @@ export const RegisterPage: React.FC = () => {
       const registrationSource = session?.source || 'landing_page';
       const consentStatus = marketingConsent ? 'CONSENT_GRANTED' : 'CONSENT_WITHHELD';
 
-      await register({
+      const createdUser = await register({
         fullName: fullName.trim(),
         email: email.trim(),
         password,
         phoneNumber: cleanPhone || undefined,
         registrationSource,
         consentStatus,
+        role,
       });
 
       // Track distinct event: User successfully registers
@@ -91,7 +117,21 @@ export const RegisterPage: React.FC = () => {
         vehicleModel: session?.vehicleModel,
       });
 
-      navigate('/profile');
+      // Redirect directly to the appropriate sign-in page using backend-assigned role
+      const isGarageRole = createdUser?.roles?.includes('ROLE_GARAGE_OWNER');
+      const targetPortal = isGarageRole ? 'garage' : 'customer';
+      const pending = (location.state?.pendingAction as PendingAction) || getPendingAction();
+
+      navigate(`/login?portal=${targetPortal}&registered=true`, {
+        replace: true,
+        state: {
+          registeredEmail: email.trim(),
+          pendingAction: pending,
+          successMessage: isGarageRole
+            ? 'Registration successful! Please sign in with your Garage Owner credentials.'
+            : 'Registration successful! Please sign in with your Vehicle Owner credentials.',
+        },
+      });
     } catch (err: any) {
       setErrorMessage(err.message || 'Registration failed. Please verify your details.');
     } finally {
@@ -110,8 +150,38 @@ export const RegisterPage: React.FC = () => {
           </div>
           <h1 className="text-2xl font-extrabold text-white">Create Account</h1>
           <p className="text-secondary text-xs mt-1">
-            Join MeriGarage to write verified customer reviews or manage your garage.
+            {role === 'ROLE_USER'
+              ? 'Join as a Vehicle Owner to track service history, write reviews, and request quotes.'
+              : 'Join as a Garage Owner to list workshops, manage quotes, and verify ownership.'}
           </p>
+        </div>
+
+        {/* Role Selector: Vehicle Owner vs Garage Owner */}
+        <div className="flex items-center justify-center gap-3 mb-6">
+          <button
+            type="button"
+            onClick={() => setRole('ROLE_USER')}
+            className={`btn btn-sm flex-1 flex items-center justify-center gap-2 py-2.5 px-4 transition-all ${
+              role === 'ROLE_USER'
+                ? 'btn-primary shadow-lg'
+                : 'btn-secondary border border-border'
+            }`}
+          >
+            <span className="material-symbols-outlined text-base">directions_car</span>
+            <span>Vehicle Owner</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setRole('ROLE_GARAGE_OWNER')}
+            className={`btn btn-sm flex-1 flex items-center justify-center gap-2 py-2.5 px-4 transition-all ${
+              role === 'ROLE_GARAGE_OWNER'
+                ? 'btn-primary shadow-lg'
+                : 'btn-secondary border border-border'
+            }`}
+          >
+            <span className="material-symbols-outlined text-base">construction</span>
+            <span>Garage Owner</span>
+          </button>
         </div>
 
         {errorMessage && (
@@ -127,8 +197,11 @@ export const RegisterPage: React.FC = () => {
         <div className="google-auth-wrapper mb-6">
           <GoogleAuthButton
             mode="signup"
+            roleTab={role === 'ROLE_GARAGE_OWNER' ? 'garage' : 'customer'}
+            role={role}
             onSuccess={() => {
-              navigate('/profile', { replace: true });
+              const dest = resolveRegisterDestination();
+              navigate(dest.url, { state: dest.state, replace: true });
             }}
             onError={(err) => setErrorMessage(err)}
             disabled={submitting}

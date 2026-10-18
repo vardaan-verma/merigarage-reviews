@@ -3,6 +3,7 @@ import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import merigarageLogo from '../assets/merigarage-logo.png';
 import merigarageWordmark from '../assets/merigarage-wordmark.png';
+import { UserAvatar } from './UserAvatar';
 
 export const Navbar: React.FC = () => {
   const { user, isAuthenticated, logout, hasRole, hasPermission } = useAuth();
@@ -18,7 +19,8 @@ export const Navbar: React.FC = () => {
     }
   };
 
-  const isOwnerOrAdmin = hasRole('ROLE_GARAGE_OWNER') || hasRole('ROLE_ADMIN');
+  const isGarageOwner = hasRole('ROLE_GARAGE_OWNER');
+  const isVehicleOwner = hasRole('ROLE_USER') && !isGarageOwner;
   const isAdminOrPermitted =
     hasRole('ROLE_ADMIN') ||
     hasPermission('GARAGE_APPROVAL') ||
@@ -97,36 +99,68 @@ export const Navbar: React.FC = () => {
 
             {isAuthenticated && (
               <>
-                <NavLink
-                  to="/submit-garage"
-                  className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  + List Workshop
-                </NavLink>
-                <NavLink
-                  to="/my-claims"
-                  className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  My Claims
-                </NavLink>
-                <NavLink
-                  to="/my-quotes"
-                  className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  My Quotes
-                </NavLink>
-                {isOwnerOrAdmin && (
-                  <NavLink
-                    to="/owner"
-                    className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    Owner Hub
-                  </NavLink>
+                {/* Vehicle Owner Navigation (5 items total including Explore Garages & Services) */}
+                {isVehicleOwner && (
+                  <>
+                    <NavLink
+                      to="/my-reviews"
+                      className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      My Reviews
+                    </NavLink>
+                    <NavLink
+                      to="/my-asked-quotes"
+                      className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      My Asked Quotes
+                    </NavLink>
+                    <NavLink
+                      to="/profile"
+                      className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      My Profile
+                    </NavLink>
+                  </>
                 )}
+
+                {/* Garage Owner Navigation (6 items total) */}
+                {isGarageOwner && (
+                  <>
+                    <NavLink
+                      to="/submit-garage"
+                      className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      + List Workshop
+                    </NavLink>
+                    <NavLink
+                      to="/my-claims"
+                      className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      My Claims
+                    </NavLink>
+                    <NavLink
+                      to="/my-quotes"
+                      className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      My Quotes
+                    </NavLink>
+                    <NavLink
+                      to="/owner"
+                      className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      Owner Hub
+                    </NavLink>
+                  </>
+                )}
+
+                {/* Administrator Console */}
                 {isAdminOrPermitted && (
                   <NavLink
                     to="/admin"
@@ -144,9 +178,14 @@ export const Navbar: React.FC = () => {
             {isAuthenticated && user ? (
               <div className="user-menu">
                 <Link to="/profile" className="user-profile-link" onClick={() => setMobileMenuOpen(false)}>
-                  <div className="user-avatar" title={user.fullName || user.email}>
-                    {(user.fullName || user.email).charAt(0).toUpperCase()}
-                  </div>
+                  <UserAvatar
+                    photoUrl={user.profilePhotoUrl}
+                    name={user.fullName}
+                    email={user.email}
+                    size="sm"
+                    className="user-avatar overflow-hidden"
+                    showBorder={false}
+                  />
                   <span className="user-name">{user.fullName || user.email}</span>
                 </Link>
                 <button

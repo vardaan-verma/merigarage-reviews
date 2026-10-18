@@ -3,9 +3,14 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Alert } from '../components/Alert';
 import { GoogleAuthButton } from '../components/GoogleAuthButton';
+import {
+  getPendingAction,
+  isValidInternalReturnUrl,
+  type PendingAction,
+} from '../utils/pendingActionStorage';
 
 export const LoginPage: React.FC = () => {
-  const { login, isAuthenticated } = useAuth();
+  const { user, login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -15,26 +20,89 @@ export const LoginPage: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successNotice, setSuccessNotice] = useState<string | null>(null);
 
-  // Sync role tab from URL search parameters if provided (e.g. ?role=garage)
+  // Sync role tab matching portal param or pending action
   React.useEffect(() => {
     const params = new URLSearchParams(location.search);
-    const roleParam = params.get('role');
-    if (roleParam === 'garage') {
+    const portalParam = params.get('portal') || params.get('role');
+    const pending = (location.state?.pendingAction as PendingAction) || getPendingAction();
+
+    if (pending?.portal === 'garage') {
       setRoleTab('garage');
-    } else if (roleParam === 'customer') {
+    } else if (pending?.portal === 'customer') {
+      setRoleTab('customer');
+    } else if (portalParam === 'garage' || portalParam === 'garage_owner' || portalParam === 'owner') {
+      setRoleTab('garage');
+    } else if (portalParam === 'customer' || portalParam === 'vehicle_owner' || portalParam === 'user') {
       setRoleTab('customer');
     }
-  }, [location.search]);
+  }, [location.search, location.state]);
 
-  const from = (location.state as any)?.from?.pathname || (roleTab === 'garage' ? '/owner' : '/');
+  // Sync email and success banner from registration redirect if available
+  React.useEffect(() => {
+    if (location.state?.registeredEmail && !email) {
+      setEmail(location.state.registeredEmail);
+    }
+    if (location.state?.successMessage) {
+      setSuccessNotice(location.state.successMessage);
+    }
+  }, [location.state]);
+
+  const handleSwitchTab = (tab: 'customer' | 'garage') => {
+    setRoleTab(tab);
+    setErrorMessage(null);
+    setPassword('');
+  };
+
+  /**
+   * Resolves the target destination after successful login:
+   * 1. Valid pending action returnUrl (restoring form context)
+   * 2. Valid location.state.from internal path
+   * 3. Role-based fallback: Garage Owner -> /owner, Vehicle Owner -> /
+   */
+  const resolvePostLoginDestination = React.useCallback(
+    (loggedUser: any) => {
+      const isGarage = loggedUser?.roles?.includes('ROLE_GARAGE_OWNER');
+      const isAdmin = loggedUser?.roles?.includes('ROLE_ADMIN');
+
+      const pending = (location.state?.pendingAction as PendingAction) || getPendingAction();
+      if (pending && isValidInternalReturnUrl(pending.returnUrl)) {
+        // Enforce role authorization if action was strictly for garage owners
+        if (pending.portal === 'garage' && !isGarage && !isAdmin) {
+          return { url: '/', state: undefined };
+        }
+        return {
+          url: pending.returnUrl,
+          state: { restoredAction: pending },
+        };
+      }
+
+      if (location.state?.from) {
+        const fromPath =
+          typeof location.state.from === 'string'
+            ? location.state.from
+            : location.state.from.pathname + (location.state.from.search || '');
+        if (isValidInternalReturnUrl(fromPath)) {
+          return { url: fromPath, state: undefined };
+        }
+      }
+
+      return {
+        url: isGarage ? '/owner' : '/',
+        state: undefined,
+      };
+    },
+    [location.state]
+  );
 
   // If already authenticated, redirect
   React.useEffect(() => {
-    if (isAuthenticated) {
-      navigate(from, { replace: true });
+    if (isAuthenticated && user) {
+      const dest = resolvePostLoginDestination(user);
+      navigate(dest.url, { state: dest.state, replace: true });
     }
-  }, [isAuthenticated, navigate, from]);
+  }, [isAuthenticated, user, navigate, resolvePostLoginDestination]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,10 +114,14 @@ export const LoginPage: React.FC = () => {
     try {
       setSubmitting(true);
       setErrorMessage(null);
-      await login(email.trim(), password);
-      navigate(from, { replace: true });
+      setSuccessNotice(null);
+      const loggedUser = await login(email.trim(), password, roleTab);
+      const dest = resolvePostLoginDestination(loggedUser);
+      navigate(dest.url, { state: dest.state, replace: true });
     } catch (err: any) {
-      setErrorMessage(err.message || 'Invalid credentials. Please verify your email and password.');
+      // Preserve the entered email/username, but never preserve or redisplay the password after an authentication failure
+      setPassword('');
+      setErrorMessage(err.message || 'Invalid email or password.');
     } finally {
       setSubmitting(false);
     }
@@ -74,11 +146,13 @@ export const LoginPage: React.FC = () => {
           </p>
         </div>
 
+
+
         {/* Customer Login vs Garage Login buttons styled like Navbar buttons */}
         <div className="flex items-center justify-center gap-3 mb-6">
           <button
             type="button"
-            onClick={() => setRoleTab('customer')}
+            onClick={() => handleSwitchTab('customer')}
             className={`btn btn-sm flex-1 flex items-center justify-center gap-2 py-2.5 px-4 transition-all ${
               roleTab === 'customer'
                 ? 'btn-primary shadow-lg'
@@ -90,7 +164,7 @@ export const LoginPage: React.FC = () => {
           </button>
           <button
             type="button"
-            onClick={() => setRoleTab('garage')}
+            onClick={() => handleSwitchTab('garage')}
             className={`btn btn-sm flex-1 flex items-center justify-center gap-2 py-2.5 px-4 transition-all ${
               roleTab === 'garage'
                 ? 'btn-primary shadow-lg'
@@ -102,13 +176,43 @@ export const LoginPage: React.FC = () => {
           </button>
         </div>
 
-        {errorMessage && (
+        {successNotice && (
           <Alert
-            type="error"
-            message={errorMessage}
-            onClose={() => setErrorMessage(null)}
+            type="success"
+            message={successNotice}
+            onClose={() => setSuccessNotice(null)}
             className="mb-4"
           />
+        )}
+
+        {errorMessage && (
+          <div className="mb-4 space-y-2">
+            <Alert
+              type="error"
+              message={errorMessage}
+              onClose={() => setErrorMessage(null)}
+            />
+            {errorMessage.includes('Customer Portal') && roleTab === 'garage' && (
+              <button
+                type="button"
+                onClick={() => handleSwitchTab('customer')}
+                className="btn btn-primary btn-sm w-full flex items-center justify-center gap-1.5 py-2 text-xs"
+              >
+                <span className="material-symbols-outlined text-base">person</span>
+                <span>Switch to Customer Portal</span>
+              </button>
+            )}
+            {errorMessage.includes('Garage Login') && roleTab === 'customer' && (
+              <button
+                type="button"
+                onClick={() => handleSwitchTab('garage')}
+                className="btn btn-primary btn-sm w-full flex items-center justify-center gap-1.5 py-2 text-xs"
+              >
+                <span className="material-symbols-outlined text-base">construction</span>
+                <span>Switch to Garage Login</span>
+              </button>
+            )}
+          </div>
         )}
 
         {/* Google OAuth Embed */}
@@ -116,8 +220,9 @@ export const LoginPage: React.FC = () => {
           <GoogleAuthButton
             mode="signin"
             roleTab={roleTab}
-            onSuccess={() => {
-              navigate(from, { replace: true });
+            onSuccess={(loggedUser) => {
+              const dest = resolvePostLoginDestination(loggedUser);
+              navigate(dest.url, { state: dest.state, replace: true });
             }}
             onError={(err) => setErrorMessage(err)}
             disabled={submitting}

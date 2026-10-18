@@ -14,6 +14,7 @@ public record UserDto(
         String email,
         String fullName,
         String phoneNumber,
+        String profilePhotoUrl,
         UserStatus status,
         Set<String> roles,
         Set<String> permissions
@@ -24,6 +25,7 @@ public record UserDto(
                 principal.getEmail(),
                 principal.getFullName(),
                 principal.getPhoneNumber(),
+                principal.getProfilePhotoUrl(),
                 principal.getStatus(),
                 principal.getRoles().stream().map(Enum::name).collect(Collectors.toSet()),
                 principal.getPermissions().stream().map(Enum::name).collect(Collectors.toSet())
@@ -36,6 +38,7 @@ public record UserDto(
                 user.getEmail(),
                 user.getFullName(),
                 user.getPhoneNumber(),
+                user.getProfilePhotoUrl(),
                 user.getStatus(),
                 roles != null ? roles.stream().map(Enum::name).collect(Collectors.toSet()) : Set.of(),
                 permissions != null ? permissions.stream().map(Enum::name).collect(Collectors.toSet()) : Set.of()

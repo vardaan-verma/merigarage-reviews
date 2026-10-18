@@ -11,6 +11,7 @@ public record AdminUserSummaryDto(
         String fullName,
         String email,
         String phoneNumber,
+        String profilePhotoUrl,
         List<String> roles,
         List<String> permissions,
         UserStatus status,
@@ -22,6 +23,25 @@ public record AdminUserSummaryDto(
         int linkedGaragesCount,
         int quoteRequestsCount
 ) {
+    public AdminUserSummaryDto(
+            Long id,
+            String fullName,
+            String email,
+            String phoneNumber,
+            List<String> roles,
+            List<String> permissions,
+            UserStatus status,
+            String registrationSource,
+            String consentStatus,
+            LocalDateTime emailVerifiedAt,
+            LocalDateTime createdAt,
+            LocalDateTime updatedAt,
+            int linkedGaragesCount,
+            int quoteRequestsCount
+    ) {
+        this(id, fullName, email, phoneNumber, null, roles, permissions, status, registrationSource, consentStatus, emailVerifiedAt, createdAt, updatedAt, linkedGaragesCount, quoteRequestsCount);
+    }
+
     public static AdminUserSummaryDto fromUser(
             User user,
             List<String> roles,
@@ -34,6 +54,7 @@ public record AdminUserSummaryDto(
                 user.getFullName(),
                 user.getEmail(),
                 user.getPhoneNumber(),
+                user.getProfilePhotoUrl(),
                 roles,
                 permissions,
                 user.getStatus(),

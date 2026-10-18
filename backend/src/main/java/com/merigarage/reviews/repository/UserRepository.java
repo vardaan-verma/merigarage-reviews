@@ -26,6 +26,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     long countByCreatedAtAfter(LocalDateTime after);
 
+    long countByProfilePhotoStorageKey(String profilePhotoStorageKey);
+
     @Query("""
         SELECT u FROM User u
         WHERE (:search IS NULL OR LOWER(u.fullName) LIKE LOWER(CONCAT('%', :search, '%'))

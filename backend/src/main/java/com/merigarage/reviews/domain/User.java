@@ -37,6 +37,17 @@ public class User {
     @Column(name = "phone_number", length = 20)
     private String phoneNumber;
 
+    @Size(max = 500)
+    @Column(name = "profile_photo_url", length = 500)
+    private String profilePhotoUrl;
+
+    @Size(max = 500)
+    @Column(name = "profile_photo_storage_key", length = 500)
+    private String profilePhotoStorageKey;
+
+    @Column(name = "is_custom_photo", nullable = false)
+    private Boolean isCustomPhoto = false;
+
     @Size(max = 100)
     @Column(name = "registration_source", length = 100)
     private String registrationSource;
@@ -122,6 +133,30 @@ public class User {
 
     public void setPhoneNumber(String phoneNumber) {
         this.phoneNumber = phoneNumber;
+    }
+
+    public String getProfilePhotoUrl() {
+        return profilePhotoUrl;
+    }
+
+    public void setProfilePhotoUrl(String profilePhotoUrl) {
+        this.profilePhotoUrl = profilePhotoUrl;
+    }
+
+    public String getProfilePhotoStorageKey() {
+        return profilePhotoStorageKey;
+    }
+
+    public void setProfilePhotoStorageKey(String profilePhotoStorageKey) {
+        this.profilePhotoStorageKey = profilePhotoStorageKey;
+    }
+
+    public Boolean getIsCustomPhoto() {
+        return isCustomPhoto != null && isCustomPhoto;
+    }
+
+    public void setIsCustomPhoto(Boolean isCustomPhoto) {
+        this.isCustomPhoto = isCustomPhoto != null ? isCustomPhoto : false;
     }
 
     public UserStatus getStatus() {

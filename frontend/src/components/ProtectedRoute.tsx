@@ -27,7 +27,30 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   }
 
   if (!isAuthenticated || !user) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
+    const targetRoles = requiredRole ? (Array.isArray(requiredRole) ? requiredRole : [requiredRole]) : [];
+    const isGarageAction = targetRoles.includes('ROLE_GARAGE_OWNER');
+    const portal = isGarageAction ? 'garage' : 'customer';
+    const returnUrl = location.pathname + location.search + location.hash;
+
+    const action = {
+      id: `route_guard_${Date.now()}`,
+      actionType: 'GENERIC_NAV',
+      returnUrl,
+      portal,
+    };
+    try {
+      sessionStorage.setItem('merigarage_pending_action', JSON.stringify({ ...action, createdAt: Date.now() }));
+    } catch (e) {
+      // Ignore
+    }
+
+    return (
+      <Navigate
+        to={`/login?portal=${portal}`}
+        state={{ from: location, pendingAction: action }}
+        replace
+      />
+    );
   }
 
   // Check roles if required

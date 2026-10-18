@@ -2626,6 +2626,21 @@ p {
 .modal-md { max-width: 620px; }
 .modal-lg { max-width: 780px; }
 .modal-xl { max-width: 960px; }
+.modal-2xl { max-width: 1180px; width: 95vw; }
+
+.poster-layout-grid {
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: 2rem;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .poster-layout-grid {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+}
 
 .modal-header {
   display: flex;
@@ -3535,9 +3550,11 @@ p {
   flex-shrink: 0;
 }
 
-.admin-tab-pill {
+.admin-tab-pill,
+.btn-pill {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.5rem;
   padding: 0.45rem 1rem;
   border-radius: var(--radius-full);
@@ -3550,20 +3567,38 @@ p {
   color: var(--text-secondary);
   cursor: pointer;
   white-space: nowrap;
+  user-select: none;
 }
 
-.admin-tab-pill:hover {
+.admin-tab-pill:hover,
+.btn-pill:hover {
   background-color: var(--bg-card-hover);
   color: #ffffff;
   border-color: rgba(204, 203, 204, 0.4);
   transform: translateY(-1px);
 }
 
-.admin-tab-pill.active {
+.admin-tab-pill:focus-visible,
+.btn-pill:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.admin-tab-pill.active,
+.btn-pill.active,
+.btn-pill.is-active,
+.btn-pill[aria-selected="true"] {
   background: linear-gradient(135deg, #eb1620 0%, #c41019 100%);
-  color: #ffffff;
+  color: #ffffff !important;
   border-color: var(--primary);
   box-shadow: 0 4px 14px rgba(235, 22, 32, 0.35);
+}
+
+.admin-tab-pill:disabled,
+.btn-pill:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .admin-pill-badge {

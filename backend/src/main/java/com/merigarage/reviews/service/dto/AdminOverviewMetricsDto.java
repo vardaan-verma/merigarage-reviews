@@ -19,6 +19,8 @@ public record AdminOverviewMetricsDto(
         long verifiedGarages,
         long claimedGarages,
         long totalReviews,
+        long totalSubmittedReviews,
+        long pendingReviewReports,
         long totalLeads,
         long homepageSearchSubmissions,
         Map<String, Long> quoteRequestsByStatus,

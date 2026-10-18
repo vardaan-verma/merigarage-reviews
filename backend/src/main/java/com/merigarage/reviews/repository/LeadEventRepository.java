@@ -28,8 +28,13 @@ public interface LeadEventRepository extends JpaRepository<LeadEvent, Long> {
 
     java.util.List<LeadEvent> findTop5ByOrderByCreatedAtDesc();
 
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.data.jpa.repository.Query("UPDATE LeadEvent e SET e.user = :user WHERE e.sessionId = :sessionId AND e.user IS NULL")
+    int associateSessionWithUser(@org.springframework.data.repository.query.Param("sessionId") String sessionId, @org.springframework.data.repository.query.Param("user") com.merigarage.reviews.domain.User user);
+
     @org.springframework.data.jpa.repository.Query("""
         SELECT e FROM LeadEvent e
+        LEFT JOIN e.user u
         WHERE (:eventType IS NULL OR e.eventType = :eventType)
           AND (:city IS NULL OR LOWER(e.city) = LOWER(:city))
           AND (:state IS NULL OR LOWER(e.state) = LOWER(:state))
@@ -39,9 +44,15 @@ public interface LeadEventRepository extends JpaRepository<LeadEvent, Long> {
           AND (:toDt IS NULL OR e.createdAt <= :toDt)
           AND (:hasUser IS NULL OR (:hasUser = true AND e.user IS NOT NULL) OR (:hasUser = false AND e.user IS NULL))
           AND (:search IS NULL OR LOWER(e.sessionId) LIKE LOWER(CONCAT('%', :search, '%'))
+               OR LOWER(e.eventId) LIKE LOWER(CONCAT('%', :search, '%'))
                OR LOWER(e.city) LIKE LOWER(CONCAT('%', :search, '%'))
-               OR LOWER(e.vehicleModel) LIKE LOWER(CONCAT('%', :search, '%'))
-               OR LOWER(e.vehicleMake) LIKE LOWER(CONCAT('%', :search, '%')))
+               OR (e.state IS NOT NULL AND LOWER(e.state) LIKE LOWER(CONCAT('%', :search, '%')))
+               OR (e.vehicleModel IS NOT NULL AND LOWER(e.vehicleModel) LIKE LOWER(CONCAT('%', :search, '%')))
+               OR (e.vehicleMake IS NOT NULL AND LOWER(e.vehicleMake) LIKE LOWER(CONCAT('%', :search, '%')))
+               OR (e.phoneNumber IS NOT NULL AND LOWER(e.phoneNumber) LIKE LOWER(CONCAT('%', :search, '%')))
+               OR (e.customerName IS NOT NULL AND LOWER(e.customerName) LIKE LOWER(CONCAT('%', :search, '%')))
+               OR (u IS NOT NULL AND LOWER(u.fullName) LIKE LOWER(CONCAT('%', :search, '%')))
+               OR (u IS NOT NULL AND LOWER(u.email) LIKE LOWER(CONCAT('%', :search, '%'))))
     """)
     Page<LeadEvent> searchLeadEvents(
         @org.springframework.data.repository.query.Param("eventType") LeadEventType eventType,

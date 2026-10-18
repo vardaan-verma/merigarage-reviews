@@ -19,6 +19,7 @@ import { Alert } from '../components/Alert';
 import { Modal } from '../components/Modal';
 import { StateSelect, CitySelect } from '../components/LocationSelect';
 import { getCitiesForState } from '../data/indiaLocations';
+import { GarageReviewPosterCard } from '../components/GarageReviewPosterCard';
 
 interface PendingPhoto {
   id: string;
@@ -37,7 +38,7 @@ export const OwnerDashboardPage: React.FC = () => {
 
   const [myGarages, setMyGarages] = useState<GarageSummaryDto[]>([]);
   const [activeGarage, setActiveGarage] = useState<GarageDetailDto | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'quotes' | 'edits' | 'photos' | 'documents' | 'services'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'quotes' | 'edits' | 'photos' | 'documents' | 'services' | 'poster'>('overview');
 
   // Quotes Management Data
   const [quoteRequests, setQuoteRequests] = useState<QuoteRequestDto[]>([]);
@@ -810,6 +811,16 @@ export const OwnerDashboardPage: React.FC = () => {
               onClick={() => setActiveTab('services')}
             >
               Services ({garageServices.length})
+            </button>
+            <button
+              type="button"
+              className={`tab-btn px-4 py-2 text-sm font-medium border-b-2 flex items-center gap-1.5 ${
+                activeTab === 'poster' ? 'border-primary text-primary' : 'border-transparent text-secondary'
+              }`}
+              onClick={() => setActiveTab('poster')}
+            >
+              <span className="material-symbols-outlined text-base">qr_code_2</span>
+              <span>Review Poster &amp; QR</span>
             </button>
           </div>
 
@@ -1862,6 +1873,11 @@ export const OwnerDashboardPage: React.FC = () => {
                 })}
               </div>
             </div>
+          )}
+
+          {/* Tab 6: Review Poster & QR */}
+          {activeTab === 'poster' && (
+            <GarageReviewPosterCard garage={activeGarage} />
           )}
         </>
       )}

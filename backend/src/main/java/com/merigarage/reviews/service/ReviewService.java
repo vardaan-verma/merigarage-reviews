@@ -15,6 +15,7 @@ import com.merigarage.reviews.repository.ReviewRepository;
 import com.merigarage.reviews.repository.ReviewResponseRepository;
 import com.merigarage.reviews.service.dto.CreateReviewRequest;
 import com.merigarage.reviews.service.dto.UpdateReviewRequest;
+import com.merigarage.reviews.service.dto.UserReviewDto;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -185,6 +186,17 @@ public class ReviewService {
     public Review getReviewById(Long reviewId) {
         return reviewRepository.findById(reviewId)
                 .orElseThrow(() -> new ResourceNotFoundException("Review not found with id: " + reviewId));
+    }
+
+    public List<UserReviewDto> getUserReviews(Long userId) {
+        List<Review> reviews = reviewRepository.findByUserIdOrderByCreatedAtDesc(userId);
+        return reviews.stream()
+                .filter(r -> !Boolean.TRUE.equals(r.getIsDeleted()))
+                .map(r -> {
+                    ReviewResponse resp = responseRepository.findByReviewId(r.getId()).orElse(null);
+                    return UserReviewDto.fromEntity(r, resp);
+                })
+                .toList();
     }
 
     private void validateRatings(Byte sq, Byte pr, Byte tl, Byte cm) {

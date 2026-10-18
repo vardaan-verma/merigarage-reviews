@@ -13,7 +13,9 @@ import org.springframework.web.context.WebApplicationContext;
 
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import org.springframework.http.MediaType;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -133,5 +135,23 @@ class AdminPortalControllerTest {
         mockMvc.perform(get("/api/admin/audit-logs"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content").isArray());
+    }
+
+    @Test
+    @WithMockUser(roles = "USER")
+    void switchUserPrimaryRole_RegularUser_Forbidden() throws Exception {
+        mockMvc.perform(post("/api/admin/users/1/primary-role")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"targetRole\":\"ROLE_GARAGE_OWNER\",\"reason\":\"Unauthorized test attempt\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void switchUserPrimaryRole_AdminWithoutPermission_Forbidden() throws Exception {
+        mockMvc.perform(post("/api/admin/users/1/primary-role")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"targetRole\":\"ROLE_GARAGE_OWNER\",\"reason\":\"Missing permission attempt\"}"))
+                .andExpect(status().isForbidden());
     }
 }

@@ -13,9 +13,11 @@ import com.merigarage.reviews.repository.UserRepository;
 import com.merigarage.reviews.repository.UserRoleRepository;
 import com.merigarage.reviews.security.oauth.GoogleTokenPayload;
 import com.merigarage.reviews.service.dto.RegisterUserRequest;
+import com.merigarage.reviews.service.dto.UpdateProfileRequest;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
 import java.util.Locale;
@@ -29,15 +31,21 @@ public class UserService {
     private final RoleRepository roleRepository;
     private final UserRoleRepository userRoleRepository;
     private final PasswordEncoder passwordEncoder;
+    private final com.merigarage.reviews.service.storage.FileStorageService fileStorageService;
+    private final GooglePhotoImportService googlePhotoImportService;
 
     public UserService(UserRepository userRepository,
                        RoleRepository roleRepository,
                        UserRoleRepository userRoleRepository,
-                       PasswordEncoder passwordEncoder) {
+                       PasswordEncoder passwordEncoder,
+                       com.merigarage.reviews.service.storage.FileStorageService fileStorageService,
+                       GooglePhotoImportService googlePhotoImportService) {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.userRoleRepository = userRoleRepository;
         this.passwordEncoder = passwordEncoder;
+        this.fileStorageService = fileStorageService;
+        this.googlePhotoImportService = googlePhotoImportService;
     }
 
     @Transactional
@@ -50,6 +58,10 @@ public class UserService {
         }
         if (request.password() == null || request.password().length() < 8) {
             throw new ValidationException("Password must be at least 8 characters long.");
+        }
+
+        if (request.role() == RoleName.ROLE_ADMIN) {
+            throw new ValidationException("Administrator accounts cannot be registered publicly.");
         }
 
         String normalizedEmail = normalizeEmail(request.email());
@@ -70,10 +82,14 @@ public class UserService {
 
         User savedUser = userRepository.save(user);
 
-        Role userRole = roleRepository.findByName(RoleName.ROLE_USER)
-                .orElseThrow(() -> new ResourceNotFoundException("Default role ROLE_USER not found in database."));
+        final RoleName targetRole = (request.role() == RoleName.ROLE_GARAGE_OWNER)
+                ? RoleName.ROLE_GARAGE_OWNER
+                : RoleName.ROLE_USER;
 
-        UserRole mapping = new UserRole(savedUser, userRole);
+        Role assignedRole = roleRepository.findByName(targetRole)
+                .orElseThrow(() -> new ResourceNotFoundException("Default role " + targetRole + " not found in database."));
+
+        UserRole mapping = new UserRole(savedUser, assignedRole);
         userRoleRepository.save(mapping);
 
         return savedUser;
@@ -91,6 +107,81 @@ public class UserService {
     }
 
     @Transactional
+    public User processExistingUserGoogleLogin(User existingUser, GoogleTokenPayload payload) {
+        if (existingUser.getStatus() == UserStatus.SUSPENDED) {
+            throw new ValidationException("Account is suspended. Please contact platform support.");
+        }
+        if (existingUser.getStatus() == UserStatus.DEACTIVATED) {
+            throw new ValidationException("Account is deactivated.");
+        }
+        if (existingUser.getEmailVerifiedAt() == null) {
+            existingUser.setEmailVerifiedAt(LocalDateTime.now());
+        }
+        if ((existingUser.getFullName() == null || existingUser.getFullName().isBlank())
+                && payload.name() != null && !payload.name().isBlank()) {
+            existingUser.setFullName(payload.name().trim());
+        }
+
+        // Respect user customization:
+        // If user has no photo at all, import Google photo initially if available.
+        // If user already has a photo (custom uploaded or previously imported), preserve it!
+        boolean hasExistingPhoto = (existingUser.getProfilePhotoStorageKey() != null && !existingUser.getProfilePhotoStorageKey().isBlank())
+                || (existingUser.getProfilePhotoUrl() != null && !existingUser.getProfilePhotoUrl().isBlank())
+                || Boolean.TRUE.equals(existingUser.getIsCustomPhoto());
+
+        if (!hasExistingPhoto && payload.picture() != null && !payload.picture().isBlank()) {
+            String storageKey = googlePhotoImportService.importGooglePhoto(payload.picture(), existingUser.getId());
+            if (storageKey != null) {
+                existingUser.setProfilePhotoStorageKey(storageKey);
+                existingUser.setProfilePhotoUrl("/api/users/" + existingUser.getId() + "/photo");
+                existingUser.setIsCustomPhoto(false);
+            }
+        }
+
+        return userRepository.save(existingUser);
+    }
+
+    @Transactional
+    public User registerUserWithRole(GoogleTokenPayload payload, RoleName targetRole) {
+        if (targetRole == RoleName.ROLE_ADMIN) {
+            throw new ValidationException("Administrator accounts cannot be created via public registration.");
+        }
+
+        String normalizedEmail = normalizeEmail(payload.email());
+        String fullName = (payload.name() != null && !payload.name().isBlank())
+                ? payload.name().trim()
+                : normalizedEmail.split("@")[0];
+
+        User newUser = new User();
+        newUser.setEmail(normalizedEmail);
+        newUser.setFullName(fullName);
+        newUser.setPasswordHash(passwordEncoder.encode(UUID.randomUUID().toString()));
+        newUser.setStatus(UserStatus.ACTIVE);
+        newUser.setEmailVerifiedAt(LocalDateTime.now());
+        newUser.setIsCustomPhoto(false);
+
+        User savedUser = userRepository.save(newUser);
+
+        Role roleEntity = roleRepository.findByName(targetRole)
+                .orElseThrow(() -> new ResourceNotFoundException("Role " + targetRole + " not found in database."));
+
+        UserRole mapping = new UserRole(savedUser, roleEntity);
+        userRoleRepository.save(mapping);
+
+        if (payload.picture() != null && !payload.picture().isBlank()) {
+            String storageKey = googlePhotoImportService.importGooglePhoto(payload.picture(), savedUser.getId());
+            if (storageKey != null) {
+                savedUser.setProfilePhotoStorageKey(storageKey);
+                savedUser.setProfilePhotoUrl("/api/users/" + savedUser.getId() + "/photo");
+                savedUser.setIsCustomPhoto(false);
+                savedUser = userRepository.save(savedUser);
+            }
+        }
+
+        return savedUser;
+    }
+
+    @Transactional
     public User loginOrRegisterWithGoogle(GoogleTokenPayload payload) {
         if (payload == null || payload.email() == null || payload.email().isBlank()) {
             throw new ValidationException("Google user profile must contain a valid email.");
@@ -98,45 +189,8 @@ public class UserService {
 
         String normalizedEmail = normalizeEmail(payload.email());
         return userRepository.findByEmail(normalizedEmail)
-                .map(existingUser -> {
-                    if (existingUser.getStatus() == UserStatus.SUSPENDED) {
-                        throw new ValidationException("Account is suspended. Please contact platform support.");
-                    }
-                    if (existingUser.getStatus() == UserStatus.DEACTIVATED) {
-                        throw new ValidationException("Account is deactivated.");
-                    }
-                    if (existingUser.getEmailVerifiedAt() == null) {
-                        existingUser.setEmailVerifiedAt(LocalDateTime.now());
-                    }
-                    if ((existingUser.getFullName() == null || existingUser.getFullName().isBlank())
-                            && payload.name() != null && !payload.name().isBlank()) {
-                        existingUser.setFullName(payload.name().trim());
-                    }
-                    return userRepository.save(existingUser);
-                })
-                .orElseGet(() -> {
-                    String fullName = (payload.name() != null && !payload.name().isBlank())
-                            ? payload.name().trim()
-                            : normalizedEmail.split("@")[0];
-
-                    User newUser = new User();
-                    newUser.setEmail(normalizedEmail);
-                    newUser.setFullName(fullName);
-                    // Generate strong non-usable password hash for OAuth-created account
-                    newUser.setPasswordHash(passwordEncoder.encode(UUID.randomUUID().toString()));
-                    newUser.setStatus(UserStatus.ACTIVE);
-                    newUser.setEmailVerifiedAt(LocalDateTime.now());
-
-                    User savedUser = userRepository.save(newUser);
-
-                    Role userRole = roleRepository.findByName(RoleName.ROLE_USER)
-                            .orElseThrow(() -> new ResourceNotFoundException("Default role ROLE_USER not found in database."));
-
-                    UserRole mapping = new UserRole(savedUser, userRole);
-                    userRoleRepository.save(mapping);
-
-                    return savedUser;
-                });
+                .map(existingUser -> processExistingUserGoogleLogin(existingUser, payload))
+                .orElseGet(() -> registerUserWithRole(payload, RoleName.ROLE_USER));
     }
 
     public String normalizeEmail(String email) {
@@ -159,5 +213,81 @@ public class UserService {
             return "+" + digits;
         }
         return null;
+    }
+
+    @Transactional
+    public User updateUserProfile(Long userId, UpdateProfileRequest request) {
+        User user = findById(userId);
+
+        if (request.fullName() != null && !request.fullName().isBlank()) {
+            user.setFullName(request.fullName().trim());
+        }
+
+        if (request.phoneNumber() != null) {
+            user.setPhoneNumber(normalizePhoneNumber(request.phoneNumber()));
+        }
+
+        if (request.profilePhotoUrl() != null && !request.profilePhotoUrl().isBlank()) {
+            user.setProfilePhotoUrl(request.profilePhotoUrl().trim());
+        }
+
+        if (request.newPassword() != null && !request.newPassword().isBlank()) {
+            if (request.currentPassword() == null || !passwordEncoder.matches(request.currentPassword(), user.getPasswordHash())) {
+                throw new ValidationException("Current password does not match.");
+            }
+            if (request.newPassword().length() < 8) {
+                throw new ValidationException("New password must be at least 8 characters long.");
+            }
+            user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
+        }
+
+        return userRepository.save(user);
+    }
+
+    @Transactional
+    public User uploadProfilePhoto(Long userId, MultipartFile file) {
+        if (userId == null) {
+            throw new ValidationException("User ID is required.");
+        }
+        User user = findById(userId);
+        String oldStorageKey = user.getProfilePhotoStorageKey();
+
+        String newStorageKey = fileStorageService.storeUserProfilePhoto(file, userId);
+        try {
+            user.setProfilePhotoStorageKey(newStorageKey);
+            user.setProfilePhotoUrl("/api/users/" + userId + "/photo");
+            user.setIsCustomPhoto(true);
+            User saved = userRepository.save(user);
+
+            // Clean up previous photo if not referenced elsewhere
+            if (oldStorageKey != null && !oldStorageKey.equals(newStorageKey)) {
+                if (userRepository.countByProfilePhotoStorageKey(oldStorageKey) == 0) {
+                    fileStorageService.delete(oldStorageKey);
+                }
+            }
+            return saved;
+        } catch (Exception ex) {
+            fileStorageService.delete(newStorageKey);
+            throw ex;
+        }
+    }
+
+    @Transactional
+    public User deleteProfilePhoto(Long userId) {
+        if (userId == null) {
+            throw new ValidationException("User ID is required.");
+        }
+        User user = findById(userId);
+        String oldStorageKey = user.getProfilePhotoStorageKey();
+
+        user.setProfilePhotoStorageKey(null);
+        user.setProfilePhotoUrl(null);
+        user.setIsCustomPhoto(false);
+        User saved = userRepository.save(user);
+
+        if (oldStorageKey != null && userRepository.countByProfilePhotoStorageKey(oldStorageKey) == 0) {
+            fileStorageService.delete(oldStorageKey);
+        }
+        return saved;
     }
 }

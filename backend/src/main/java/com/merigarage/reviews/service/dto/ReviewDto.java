@@ -11,6 +11,7 @@ public record ReviewDto(
         Long garageId,
         Long authorUserId,
         String authorFullName,
+        String authorProfilePhotoUrl,
         Byte ratingServiceQuality,
         Byte ratingPricing,
         Byte ratingTimeline,
@@ -37,7 +38,26 @@ public record ReviewDto(
             LocalDateTime createdAt,
             LocalDateTime updatedAt
     ) {
-        this(id, garageId, null, authorFullName, ratingServiceQuality, ratingPricing, ratingTimeline, ratingCommunication, overallRating, reviewTitle, reviewText, response, createdAt, updatedAt);
+        this(id, garageId, null, authorFullName, null, ratingServiceQuality, ratingPricing, ratingTimeline, ratingCommunication, overallRating, reviewTitle, reviewText, response, createdAt, updatedAt);
+    }
+
+    public ReviewDto(
+            Long id,
+            Long garageId,
+            Long authorUserId,
+            String authorFullName,
+            Byte ratingServiceQuality,
+            Byte ratingPricing,
+            Byte ratingTimeline,
+            Byte ratingCommunication,
+            BigDecimal overallRating,
+            String reviewTitle,
+            String reviewText,
+            ReviewResponseDto response,
+            LocalDateTime createdAt,
+            LocalDateTime updatedAt
+    ) {
+        this(id, garageId, authorUserId, authorFullName, null, ratingServiceQuality, ratingPricing, ratingTimeline, ratingCommunication, overallRating, reviewTitle, reviewText, response, createdAt, updatedAt);
     }
 
     public static ReviewDto fromEntity(Review review, ReviewResponse response) {
@@ -53,6 +73,7 @@ public record ReviewDto(
                 review.getGarage().getId(),
                 review.getUser() != null ? review.getUser().getId() : null,
                 review.getUser() != null ? review.getUser().getFullName() : "Anonymous",
+                review.getUser() != null ? review.getUser().getProfilePhotoUrl() : null,
                 review.getRatingServiceQuality(),
                 review.getRatingPricing(),
                 review.getRatingTimeline(),

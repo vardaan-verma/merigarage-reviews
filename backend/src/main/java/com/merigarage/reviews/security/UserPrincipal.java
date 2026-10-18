@@ -16,6 +16,7 @@ public class UserPrincipal implements UserDetails {
     private final String passwordHash;
     private final String fullName;
     private final String phoneNumber;
+    private final String profilePhotoUrl;
     private final UserStatus status;
     private final Set<RoleName> roles;
     private final Set<AdminPermissionCode> permissions;
@@ -28,7 +29,7 @@ public class UserPrincipal implements UserDetails {
                          UserStatus status,
                          Set<RoleName> roles,
                          Set<AdminPermissionCode> permissions) {
-        this(id, email, passwordHash, fullName, null, status, roles, permissions);
+        this(id, email, passwordHash, fullName, null, null, status, roles, permissions);
     }
 
     public UserPrincipal(Long id,
@@ -39,11 +40,24 @@ public class UserPrincipal implements UserDetails {
                          UserStatus status,
                          Set<RoleName> roles,
                          Set<AdminPermissionCode> permissions) {
+        this(id, email, passwordHash, fullName, phoneNumber, null, status, roles, permissions);
+    }
+
+    public UserPrincipal(Long id,
+                         String email,
+                         String passwordHash,
+                         String fullName,
+                         String phoneNumber,
+                         String profilePhotoUrl,
+                         UserStatus status,
+                         Set<RoleName> roles,
+                         Set<AdminPermissionCode> permissions) {
         this.id = id;
         this.email = email;
         this.passwordHash = passwordHash;
         this.fullName = fullName;
         this.phoneNumber = phoneNumber;
+        this.profilePhotoUrl = profilePhotoUrl;
         this.status = status;
         this.roles = Collections.unmodifiableSet(roles != null ? roles : Collections.emptySet());
         this.permissions = Collections.unmodifiableSet(permissions != null ? permissions : Collections.emptySet());
@@ -76,6 +90,10 @@ public class UserPrincipal implements UserDetails {
 
     public String getPhoneNumber() {
         return phoneNumber;
+    }
+
+    public String getProfilePhotoUrl() {
+        return profilePhotoUrl;
     }
 
     public UserStatus getStatus() {

@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { Modal } from './Modal';
 import { Alert } from './Alert';
+import { AuthRequiredWarning } from './AuthRequiredWarning';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
-import type { GarageDetailDto, QuoteRequestDto } from '../api/types';
+import type { GarageDetailDto, QuoteRequestDto, VehicleDto } from '../api/types';
 import {
   resolveVehicleDetails,
   recordUserVehiclePreference,
@@ -17,6 +18,7 @@ interface QuoteRequestModalProps {
   onClose: () => void;
   garage: GarageDetailDto;
   onSuccess?: (quote: QuoteRequestDto) => void;
+  initialFormState?: Record<string, any>;
 }
 
 const VEHICLE_TYPES = [
@@ -57,9 +59,9 @@ export const QuoteRequestModal: React.FC<QuoteRequestModalProps> = ({
   onClose,
   garage,
   onSuccess,
+  initialFormState,
 }) => {
-  const { user, isAuthenticated } = useAuth();
-  const navigate = useNavigate();
+  const { user, isAuthenticated, isGarageOwner } = useAuth();
 
   // Form states
   const [selectedServiceIds, setSelectedServiceIds] = useState<number[]>([]);
@@ -76,10 +78,37 @@ export const QuoteRequestModal: React.FC<QuoteRequestModalProps> = ({
   const [contactPhone, setContactPhone] = useState('');
   const [contactEmail, setContactEmail] = useState('');
 
+  // User Saved Vehicles states
+  const [savedVehicles, setSavedVehicles] = useState<VehicleDto[]>([]);
+  const [selectedSavedVehicleId, setSelectedSavedVehicleId] = useState<number | null>(null);
+
   // Status states
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submittedQuote, setSubmittedQuote] = useState<QuoteRequestDto | null>(null);
+  const [authWarningShown, setAuthWarningShown] = useState(false);
+
+  // Restore previous form state if returned from sign-in
+  useEffect(() => {
+    if (isOpen && initialFormState) {
+      if (Array.isArray(initialFormState.selectedServiceIds)) {
+        setSelectedServiceIds(initialFormState.selectedServiceIds);
+      }
+      if (initialFormState.vehicleType) setVehicleType(initialFormState.vehicleType);
+      if (initialFormState.vehicleMake) setVehicleMake(initialFormState.vehicleMake);
+      if (initialFormState.vehicleModel) setVehicleModel(initialFormState.vehicleModel);
+      if (initialFormState.vehicleYear !== undefined) setVehicleYear(initialFormState.vehicleYear);
+      if (initialFormState.fuelType) setFuelType(initialFormState.fuelType);
+      if (initialFormState.registrationNumber) setRegistrationNumber(initialFormState.registrationNumber);
+      if (initialFormState.odometerReading !== undefined) setOdometerReading(initialFormState.odometerReading);
+      if (initialFormState.preferredDate) setPreferredDate(initialFormState.preferredDate);
+      if (initialFormState.problemDescription) setProblemDescription(initialFormState.problemDescription);
+      if (initialFormState.customerMessage) setCustomerMessage(initialFormState.customerMessage);
+      if (initialFormState.contactPhone) setContactPhone(initialFormState.contactPhone);
+      if (initialFormState.contactEmail) setContactEmail(initialFormState.contactEmail);
+      if (initialFormState.selectedSavedVehicleId) setSelectedSavedVehicleId(initialFormState.selectedSavedVehicleId);
+    }
+  }, [isOpen, initialFormState]);
 
   // Available services actually offered by this garage
   const availableServices = useMemo(() => {
@@ -97,6 +126,41 @@ export const QuoteRequestModal: React.FC<QuoteRequestModalProps> = ({
       }
     }
   }, [user, contactEmail, contactPhone]);
+
+  // Load saved vehicles for authenticated vehicle owners
+  useEffect(() => {
+    if (isOpen && isAuthenticated) {
+      api.vehicles
+        .list()
+        .then((vehicles) => {
+          setSavedVehicles(vehicles);
+          // If vehicles exist and user hasn't typed anything yet, preselect first vehicle
+          if (vehicles.length > 0 && !vehicleMake && !vehicleModel) {
+            const first = vehicles[0];
+            setSelectedSavedVehicleId(first.id);
+            setVehicleType(first.vehicleType || 'CAR');
+            setVehicleMake(first.make);
+            setVehicleModel(first.model);
+            if (first.year) setVehicleYear(first.year);
+            if (first.fuelType) setFuelType(first.fuelType);
+            if (first.registrationNumber) setRegistrationNumber(first.registrationNumber);
+          }
+        })
+        .catch(() => {
+          // Graceful fallback if guest or network error
+        });
+    }
+  }, [isOpen, isAuthenticated]);
+
+  const handleSelectSavedVehicle = (v: VehicleDto) => {
+    setSelectedSavedVehicleId(v.id);
+    setVehicleType(v.vehicleType || 'CAR');
+    setVehicleMake(v.make);
+    setVehicleModel(v.model);
+    setVehicleYear(v.year || '');
+    if (v.fuelType) setFuelType(v.fuelType);
+    if (v.registrationNumber) setRegistrationNumber(v.registrationNumber);
+  };
 
   // Reset form and prefill known criteria when modal opens
   useEffect(() => {
@@ -187,7 +251,8 @@ export const QuoteRequestModal: React.FC<QuoteRequestModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isAuthenticated) {
-      navigate('/login');
+      setAuthWarningShown(true);
+      setError(null);
       return;
     }
 
@@ -326,11 +391,11 @@ export const QuoteRequestModal: React.FC<QuoteRequestModalProps> = ({
 
           <div className="flex gap-3 justify-center pt-2 flex-wrap">
             <Link
-              to="/my-quotes"
+              to={isGarageOwner ? '/my-quotes' : '/my-asked-quotes'}
               className="btn btn-primary"
               onClick={onClose}
             >
-              Track in My Quotes
+              {isGarageOwner ? 'Track in My Quotes' : 'Track in My Asked Quotes'}
             </Link>
             <button
               type="button"
@@ -343,16 +408,6 @@ export const QuoteRequestModal: React.FC<QuoteRequestModalProps> = ({
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-6">
-          {!isAuthenticated && (
-            <div className="p-3.5 rounded-lg bg-primary/10 border border-primary/30 flex items-center justify-between gap-3 text-xs">
-              <span className="text-white">
-                🔒 You need to be signed in to submit your quote request directly to {garage.name}.
-              </span>
-              <Link to="/login" className="btn btn-primary btn-xs whitespace-nowrap">
-                Sign In
-              </Link>
-            </div>
-          )}
 
           {error && <Alert type="error" message={error} onClose={() => setError(null)} />}
 
@@ -424,7 +479,67 @@ export const QuoteRequestModal: React.FC<QuoteRequestModalProps> = ({
 
           {/* 2. Vehicle Details */}
           <div className="space-y-3">
-            <h4 className="text-sm font-bold text-white">2. Vehicle Details</h4>
+            <div className="flex justify-between items-center">
+              <h4 className="text-sm font-bold text-white">2. Vehicle Details</h4>
+              {savedVehicles.length > 0 && (
+                <span className="text-2xs text-muted">
+                  {savedVehicles.length} saved vehicle{savedVehicles.length > 1 ? 's' : ''} on your profile
+                </span>
+              )}
+            </div>
+
+            {savedVehicles.length > 0 && (
+              <div className="p-3 rounded-lg bg-surface/80 border border-border/80 space-y-2">
+                <span className="text-2xs text-muted font-medium flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-xs text-primary">directions_car</span>
+                  <span>Select from your saved vehicles (or enter a different vehicle below):</span>
+                </span>
+                <div className="flex flex-wrap gap-2">
+                  {savedVehicles.map((v) => {
+                    const isSelected = selectedSavedVehicleId === v.id;
+                    return (
+                      <button
+                        key={v.id}
+                        type="button"
+                        onClick={() => handleSelectSavedVehicle(v)}
+                        className={`btn btn-xs rounded-full px-3 py-1 text-2xs transition-all flex items-center gap-1.5 ${
+                          isSelected
+                            ? 'btn-primary font-bold shadow-sm'
+                            : 'btn-secondary text-white hover:border-primary/50'
+                        }`}
+                      >
+                        <span>🚗</span>
+                        <span>
+                          {v.make} {v.model}
+                        </span>
+                        {v.registrationNumber && (
+                          <span className="font-mono text-3xs opacity-80">({v.registrationNumber})</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedSavedVehicleId(null);
+                      setVehicleMake('');
+                      setVehicleModel('');
+                      setVehicleYear('');
+                      setRegistrationNumber('');
+                      setOdometerReading('');
+                    }}
+                    className={`btn btn-xs rounded-full px-2.5 py-1 text-2xs ${
+                      selectedSavedVehicleId === null
+                        ? 'bg-border/60 text-white font-semibold'
+                        : 'text-muted hover:text-white'
+                    }`}
+                  >
+                    Enter Manually
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <label className="label text-xs">
@@ -644,6 +759,34 @@ export const QuoteRequestModal: React.FC<QuoteRequestModalProps> = ({
               and diagnostics. The workshop will provide a formal quotation for your approval.
             </p>
           </div>
+
+          {/* Inline Auth Warning when unauthenticated visitor attempts submission */}
+          {authWarningShown && !isAuthenticated && (
+            <div className="pt-2">
+              <AuthRequiredWarning
+                message="You must be signed in before asking for a quote."
+                portal="customer"
+                actionType="QUOTE_REQUEST"
+                returnUrl={window.location.pathname + window.location.search}
+                formState={{
+                  selectedServiceIds,
+                  vehicleType,
+                  vehicleMake,
+                  vehicleModel,
+                  vehicleYear,
+                  fuelType,
+                  registrationNumber,
+                  odometerReading,
+                  preferredDate,
+                  problemDescription,
+                  customerMessage,
+                  contactPhone,
+                  contactEmail,
+                  selectedSavedVehicleId,
+                }}
+              />
+            </div>
+          )}
 
           {/* Submit Buttons */}
           <div className="flex justify-end gap-3 pt-2">

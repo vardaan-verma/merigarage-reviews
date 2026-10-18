@@ -21,9 +21,14 @@ import type {
   DocumentVerificationStatus,
   AdminAuditLogDto,
   AdminPermissionCode,
+  ReviewReportDto,
+  ReviewReportStatus,
 } from '../api/types';
 import { Alert } from '../components/Alert';
 import { Modal } from '../components/Modal';
+import { AdminSearchBar } from '../components/AdminSearchBar';
+import { GarageReviewPosterModal } from '../components/GarageReviewPosterModal';
+import { UserAvatar } from '../components/UserAvatar';
 
 type AdminTab =
   | 'garages_all'
@@ -35,6 +40,7 @@ type AdminTab =
   | 'quotes'
   | 'edits'
   | 'services'
+  | 'reports'
   | 'export'
   | 'audit_logs';
 
@@ -124,6 +130,14 @@ export const AdminDashboardPage: React.FC = () => {
   const [statusModalOpen, setStatusModalOpen] = useState(false);
   const [statusModalError, setStatusModalError] = useState<string | null>(null);
 
+  // User primary role switch modal
+  const [roleSwitchUser, setRoleSwitchUser] = useState<AdminUserSummaryDto | null>(null);
+  const [targetPrimaryRole, setTargetPrimaryRole] = useState<'ROLE_USER' | 'ROLE_GARAGE_OWNER'>('ROLE_GARAGE_OWNER');
+  const [roleSwitchReason, setRoleSwitchReason] = useState('');
+  const [submittingRoleSwitch, setSubmittingRoleSwitch] = useState(false);
+  const [roleSwitchModalOpen, setRoleSwitchModalOpen] = useState(false);
+  const [roleSwitchError, setRoleSwitchError] = useState<string | null>(null);
+
   const fetchUsers = useCallback(async (page: number = userPage) => {
     if (!canManageUsers) return;
     try {
@@ -191,6 +205,47 @@ export const AdminDashboardPage: React.FC = () => {
     }
   };
 
+  const openRoleSwitchModal = (u: AdminUserSummaryDto) => {
+    setRoleSwitchUser(u);
+    const isCurrentlyGarage = u.roles.includes('ROLE_GARAGE_OWNER');
+    setTargetPrimaryRole(isCurrentlyGarage ? 'ROLE_USER' : 'ROLE_GARAGE_OWNER');
+    setRoleSwitchReason('');
+    setRoleSwitchError(null);
+    setRoleSwitchModalOpen(true);
+  };
+
+  const handleConfirmRoleSwitch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!roleSwitchUser) return;
+    if (!roleSwitchReason.trim()) {
+      setRoleSwitchError('Please provide an administrative audit justification for changing this account role.');
+      return;
+    }
+    try {
+      setSubmittingRoleSwitch(true);
+      setRoleSwitchError(null);
+      const updatedDetail = await api.admin.switchPrimaryRole(roleSwitchUser.id, {
+        targetRole: targetPrimaryRole,
+        reason: roleSwitchReason.trim(),
+      });
+      setRoleSwitchModalOpen(false);
+      setGlobalSuccess(
+        `Successfully updated primary role of ${roleSwitchUser.fullName} to ${
+          targetPrimaryRole === 'ROLE_GARAGE_OWNER' ? 'Garage Owner (ROLE_GARAGE_OWNER)' : 'Vehicle Owner (ROLE_USER)'
+        }.`
+      );
+      fetchUsers();
+      if (selectedUserDetail && selectedUserDetail.user.id === roleSwitchUser.id) {
+        setSelectedUserDetail(updatedDetail);
+      }
+      if (overviewMetrics) fetchOverview();
+    } catch (err: any) {
+      setRoleSwitchError(err.message || 'Failed to switch user primary role');
+    } finally {
+      setSubmittingRoleSwitch(false);
+    }
+  };
+
   // -------------------------------------------------------------
   // TAB 3: Garage Management (All Garages Directory)
   // -------------------------------------------------------------
@@ -214,6 +269,7 @@ export const AdminDashboardPage: React.FC = () => {
   const [selectedGarageDetail, setSelectedGarageDetail] = useState<AdminGarageDetailDto | null>(null);
   const [loadingGarageDetail, setLoadingGarageDetail] = useState(false);
   const [garageModalOpen, setGarageModalOpen] = useState(false);
+  const [adminPosterGarage, setAdminPosterGarage] = useState<{ id: number; name: string; slug: string; city?: string; state?: string; isVerified?: boolean } | null>(null);
 
   const fetchAllGarages = useCallback(async (page: number = garagePage) => {
     if (!canApproveGarages) return;
@@ -380,35 +436,105 @@ export const AdminDashboardPage: React.FC = () => {
   };
 
   // -------------------------------------------------------------
-  // EXISTING MODERATION QUEUES
+  // EXISTING MODERATION QUEUES & SEARCH STATES
   // -------------------------------------------------------------
   // Pending Garages
   const [pendingGarages, setPendingGarages] = useState<GarageSummaryDto[]>([]);
   const [loadingGarages, setLoadingGarages] = useState(false);
   const [garagesError, setGaragesError] = useState<string | null>(null);
+  const [pendingGarageSearch, setPendingGarageSearch] = useState('');
 
   // Pending Edits
   const [pendingEdits, setPendingEdits] = useState<GarageProfileEditDto[]>([]);
   const [loadingEdits, setLoadingEdits] = useState(false);
   const [editsError, setEditsError] = useState<string | null>(null);
+  const [editSearch, setEditSearch] = useState('');
 
   // Pending Claims
   const [pendingClaims, setPendingClaims] = useState<GarageClaimDto[]>([]);
   const [loadingClaims, setLoadingClaims] = useState(false);
   const [claimsError, setClaimsError] = useState<string | null>(null);
+  const [claimSearch, setClaimSearch] = useState('');
 
   // Verification Documents
   const [docGarageIdInput, setDocGarageIdInput] = useState('');
   const [loadedDocs, setLoadedDocs] = useState<GarageDocumentDto[]>([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
   const [docsError, setDocsError] = useState<string | null>(null);
+  const [docSearchQuery, setDocSearchQuery] = useState('');
 
-  // Master Services
+  // Master Services / Codes
   const [services, setServices] = useState<ServiceDto[]>([]);
   const [loadingServices, setLoadingServices] = useState(false);
   const [servicesError, setServicesError] = useState<string | null>(null);
   const [newServiceName, setNewServiceName] = useState('');
   const [newServiceCategory, setNewServiceCategory] = useState<ServiceCategory>('PERIODIC_MAINTENANCE');
+  const [serviceSearch, setServiceSearch] = useState('');
+  const [serviceCategoryFilter, setServiceCategoryFilter] = useState('ALL');
+
+  // Review Reports & Moderation Queue (Phase 9)
+  const [reportsData, setReportsData] = useState<PagedResponse<ReviewReportDto>>({
+    content: [],
+    page: 0,
+    size: 15,
+    totalElements: 0,
+    totalPages: 0,
+    last: true,
+  });
+  const [loadingReports, setLoadingReports] = useState(false);
+  const [reportsError, setReportsError] = useState<string | null>(null);
+  const [reportSearchQuery, setReportSearchQuery] = useState('');
+  const [reportStatusFilter, setReportStatusFilter] = useState<'ALL' | ReviewReportStatus>('ALL');
+  const [reportPage, setReportPage] = useState(0);
+
+  // Moderation action modal
+  const [selectedReport, setSelectedReport] = useState<ReviewReportDto | null>(null);
+  const [moderationModalOpen, setModerationModalOpen] = useState(false);
+  const [moderationAction, setModerationAction] = useState<'DISMISS' | 'HIDE_REVIEW' | 'DELETE_REVIEW'>('DISMISS');
+  const [moderationNotes, setModerationNotes] = useState('');
+  const [submittingModeration, setSubmittingModeration] = useState(false);
+  const [moderationError, setModerationError] = useState<string | null>(null);
+
+  const fetchReviewReports = useCallback(async (page: number = reportPage) => {
+    if (!isAdmin && !hasPermission('CONTENT_MODERATION')) return;
+    try {
+      setLoadingReports(true);
+      setReportsError(null);
+      const res = await api.admin.getReviewReports({
+        search: reportSearchQuery.trim() || undefined,
+        status: reportStatusFilter === 'ALL' ? undefined : reportStatusFilter,
+        page,
+        size: 15,
+      });
+      setReportsData(res);
+      setReportPage(res.page);
+    } catch (err: any) {
+      setReportsError(err.message || 'Failed to load review reports queue');
+    } finally {
+      setLoadingReports(false);
+    }
+  }, [isAdmin, hasPermission, reportPage, reportSearchQuery, reportStatusFilter]);
+
+  const handleModerateReport = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedReport) return;
+    try {
+      setSubmittingModeration(true);
+      setModerationError(null);
+      await api.admin.moderateReviewReport(selectedReport.id, {
+        action: moderationAction,
+        decisionNotes: moderationNotes.trim() || undefined,
+      });
+      setModerationModalOpen(false);
+      setGlobalSuccess(`Review report #${selectedReport.id} successfully moderated with action "${moderationAction}".`);
+      fetchReviewReports(reportPage);
+      if (overviewMetrics) fetchOverview();
+    } catch (err: any) {
+      setModerationError(err.message || 'Failed to moderate review report');
+    } finally {
+      setSubmittingModeration(false);
+    }
+  };
   const [newServiceDesc, setNewServiceDesc] = useState('');
   const [creatingService, setCreatingService] = useState(false);
 
@@ -558,6 +684,7 @@ export const AdminDashboardPage: React.FC = () => {
       if (allGaragesData.content.length === 0) fetchAllGarages(0);
     }
     if (activeTab === 'services') fetchServices();
+    if (activeTab === 'reports') fetchReviewReports(0);
     if (activeTab === 'audit_logs') fetchAuditLogs(0);
   }, [
     activeTab,
@@ -569,6 +696,7 @@ export const AdminDashboardPage: React.FC = () => {
     fetchPendingEdits,
     fetchPendingClaims,
     fetchServices,
+    fetchReviewReports,
     fetchAuditLogs,
     allGaragesData.content.length,
   ]);
@@ -990,14 +1118,16 @@ export const AdminDashboardPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Card 3: Total Reviews (Emerald) */}
+          {/* Card 3: Total Reviews (Clickable to Review Reports & Moderation) */}
           <div
-            className="admin-metric-card admin-metric-card-emerald"
-            title="Total platform reviews across all workshops (dashboard statistic only)"
+            className="admin-metric-card admin-metric-card-emerald is-clickable group"
+            onClick={() => setActiveTab('reports')}
+            title="Click to view Review Moderation & Owner Reports (Counts active published non-deleted customer reviews platform-wide)"
           >
             <div className="flex flex-col justify-between h-full flex-1 min-w-0">
-              <span className="admin-metric-label text-xs font-semibold truncate">
-                Total Reviews
+              <span className="admin-metric-label text-xs font-semibold truncate flex items-center gap-1">
+                <span>Total Reviews</span>
+                <span className="material-symbols-outlined text-xs text-muted" title="Active published customer reviews across all workshops (excludes deleted/hidden reviews)">info</span>
               </span>
               <div className="admin-metric-num text-2xl lg:text-3xl font-extrabold my-0.5">
                 {overviewMetrics?.totalReviews != null
@@ -1006,8 +1136,9 @@ export const AdminDashboardPage: React.FC = () => {
                   ? '...'
                   : '—'}
               </div>
-              <div className="admin-metric-link text-2xs font-medium flex items-center gap-1">
-                <span>All website reviews</span>
+              <div className="admin-metric-link text-2xs font-medium flex items-center gap-1 admin-metric-arrow transition-all">
+                <span>Moderate reports</span>
+                <span>→</span>
               </div>
             </div>
             <div className="admin-metric-icon-circle">
@@ -1076,14 +1207,14 @@ export const AdminDashboardPage: React.FC = () => {
 
         {/* Optional Collapsible Platform Insights & Activity Feeds */}
         {overviewMetrics && (
-          <div className="mt-3">
+          <div className="mt-4">
             <button
               type="button"
-              className="text-xs text-muted hover:text-white flex items-center gap-1.5 transition-colors font-medium py-1 px-2 rounded hover:bg-card"
+              className={`btn-pill ${showPlatformFeeds ? 'active' : ''}`}
               onClick={() => setShowPlatformFeeds(!showPlatformFeeds)}
             >
               <span>{showPlatformFeeds ? '▼ Hide' : '▶ Show'} Platform Breakdown & Activity Feeds</span>
-              <span className="text-2xs text-primary font-normal">
+              <span className={`text-2xs font-bold ${showPlatformFeeds ? 'text-white/90' : 'text-primary'}`}>
                 ({overviewMetrics.newRegistrations24h} new users in 24h, {overviewMetrics.totalLeads} inquiries)
               </span>
             </button>
@@ -1181,8 +1312,18 @@ export const AdminDashboardPage: React.FC = () => {
                           {overviewMetrics.recentRegistrations.map((u) => (
                             <tr key={u.id}>
                               <td>
-                                <div className="font-medium text-white">{u.fullName}</div>
-                                <div className="text-2xs text-muted truncate max-w-[150px]">{u.email}</div>
+                                <div className="flex items-center gap-2">
+                                  <UserAvatar
+                                    photoUrl={u.profilePhotoUrl}
+                                    name={u.fullName}
+                                    email={u.email}
+                                    size="xs"
+                                  />
+                                  <div>
+                                    <div className="font-medium text-white">{u.fullName}</div>
+                                    <div className="text-2xs text-muted truncate max-w-[150px]">{u.email}</div>
+                                  </div>
+                                </div>
                               </td>
                               <td>
                                 <span className="badge badge-2xs">
@@ -1308,7 +1449,7 @@ export const AdminDashboardPage: React.FC = () => {
             onClick={() => setActiveTab('users')}
           >
             <span>👥</span>
-            <span>Customers</span>
+            <span>User Directory</span>
           </button>
         )}
 
@@ -1344,6 +1485,31 @@ export const AdminDashboardPage: React.FC = () => {
             <span>Profile Edits</span>
             {pendingEdits.length > 0 && (
               <span className="admin-pill-badge">{pendingEdits.length}</span>
+            )}
+          </button>
+        )}
+
+        {isAdmin && (
+          <button
+            type="button"
+            className={`admin-tab-pill ${activeTab === 'services' ? 'active' : ''}`}
+            onClick={() => setActiveTab('services')}
+          >
+            <span>🏷️</span>
+            <span>Codes / Services</span>
+          </button>
+        )}
+
+        {(isAdmin || hasPermission('CONTENT_MODERATION')) && (
+          <button
+            type="button"
+            className={`admin-tab-pill ${activeTab === 'reports' ? 'active' : ''}`}
+            onClick={() => setActiveTab('reports')}
+          >
+            <span>🚩</span>
+            <span>Review Reports</span>
+            {(overviewMetrics?.pendingReviewReports ?? 0) > 0 && (
+              <span className="admin-pill-badge">{overviewMetrics?.pendingReviewReports}</span>
             )}
           </button>
         )}
@@ -1404,13 +1570,13 @@ export const AdminDashboardPage: React.FC = () => {
             className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4 p-3 bg-secondary/20 rounded border border-border/20"
           >
             <div>
-              <label className="label text-2xs">Search (Name / Email / Phone)</label>
-              <input
-                type="text"
-                className="input input-sm w-full"
-                placeholder="e.g. Rahul, rahul@gmail.com"
+              <label className="label text-2xs">Search (Name / Email / Phone / ID)</label>
+              <AdminSearchBar
                 value={userSearch}
-                onChange={(e) => setUserSearch(e.target.value)}
+                onChange={(val) => {
+                  setUserSearch(val);
+                }}
+                placeholder="Search name, email, phone, ID..."
               />
             </div>
             <div>
@@ -1487,10 +1653,20 @@ export const AdminDashboardPage: React.FC = () => {
                     <tr key={u.id}>
                       <td className="font-mono text-2xs">#{u.id}</td>
                       <td>
-                        <strong className="text-white block">{u.fullName}</strong>
-                        {u.registrationSource && (
-                          <span className="text-2xs text-muted">Source: {u.registrationSource}</span>
-                        )}
+                        <div className="flex items-center gap-2.5">
+                          <UserAvatar
+                            photoUrl={u.profilePhotoUrl}
+                            name={u.fullName}
+                            email={u.email}
+                            size="sm"
+                          />
+                          <div>
+                            <strong className="text-white block">{u.fullName}</strong>
+                            {u.registrationSource && (
+                              <span className="text-2xs text-muted">Source: {u.registrationSource}</span>
+                            )}
+                          </div>
+                        </div>
                       </td>
                       <td>
                         {u.email ? (
@@ -1555,6 +1731,17 @@ export const AdminDashboardPage: React.FC = () => {
                             <span className="material-symbols-outlined text-xs">visibility</span>
                             <span>Inspect</span>
                           </button>
+                          {!u.roles.includes('ROLE_ADMIN') && (
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-xs rounded-full px-2.5 py-1 text-2xs flex items-center gap-1 hover:border-primary text-secondary hover:text-white"
+                              onClick={() => openRoleSwitchModal(u)}
+                              title="Switch Primary Account Role"
+                            >
+                              <span className="material-symbols-outlined text-xs">swap_horiz</span>
+                              <span>Switch Role</span>
+                            </button>
+                          )}
                           <button
                             type="button"
                             className={`btn btn-xs rounded-full px-2.5 py-1 text-2xs flex items-center gap-1 ${
@@ -1634,13 +1821,13 @@ export const AdminDashboardPage: React.FC = () => {
             className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4 p-3 bg-secondary/20 rounded border border-border/20"
           >
             <div>
-              <label className="label text-2xs">Workshop Search (Name / Slug / City)</label>
-              <input
-                type="text"
-                className="input input-sm w-full"
-                placeholder="e.g. Bosch, Gurgaon"
+              <label className="label text-2xs">Workshop Search (Name / City / Owner / ID)</label>
+              <AdminSearchBar
                 value={garageSearch}
-                onChange={(e) => setGarageSearch(e.target.value)}
+                onChange={(val) => {
+                  setGarageSearch(val);
+                }}
+                placeholder="Search name, city, owner, ID..."
               />
             </div>
             <div>
@@ -1906,13 +2093,11 @@ export const AdminDashboardPage: React.FC = () => {
               </select>
             </div>
             <div>
-              <label className="label text-2xs">Search (Session / Vehicle / City)</label>
-              <input
-                type="text"
-                className="input input-sm w-full"
-                placeholder="e.g. Tata, Delhi"
+              <label className="label text-2xs">Search (Person / Phone / Location / Vehicle / ID)</label>
+              <AdminSearchBar
                 value={leadSearch}
-                onChange={(e) => setLeadSearch(e.target.value)}
+                onChange={(val) => setLeadSearch(val)}
+                placeholder="Search person, phone, city, vehicle, ID..."
               />
             </div>
             <div className="flex items-end gap-2">
@@ -1948,73 +2133,95 @@ export const AdminDashboardPage: React.FC = () => {
               <table className="table text-xs">
                 <thead>
                   <tr>
-                    <th>Event ID</th>
-                    <th>Type</th>
-                    <th>Session ID</th>
-                    <th>User Association</th>
+                    <th>Person / Visitor</th>
+                    <th>Contact Phone</th>
+                    <th>
+                      <span className="flex items-center gap-1">
+                        <span>Acquisition Source</span>
+                        <span
+                          className="material-symbols-outlined text-xs text-muted cursor-help"
+                          title="Acquisition channel where the visitor initiated this inquiry (e.g. homepage discovery, quote modal, direct web client)"
+                        >
+                          info
+                        </span>
+                      </span>
+                    </th>
+                    <th>Event Type</th>
                     <th>Vehicle Details</th>
                     <th>Service / Problem</th>
-                    <th>City & State</th>
-                    <th>Customer Phone</th>
+                    <th>Location</th>
                     <th>Timestamp</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {leadsData.content.map((l) => (
-                    <tr key={l.id}>
-                      <td className="font-mono text-2xs text-muted truncate max-w-[100px]" title={l.eventId}>
-                        {l.eventId}
-                      </td>
-                      <td>
-                        <span
-                          className={`badge badge-xs ${
-                            l.eventType.includes('SUBMITTED')
-                              ? 'badge-primary'
-                              : l.eventType.includes('REGISTERED')
-                              ? 'badge-success'
-                              : 'badge-secondary'
-                          }`}
-                        >
-                          {l.eventType}
-                        </span>
-                      </td>
-                      <td className="font-mono text-2xs text-secondary">{l.sessionId}</td>
-                      <td>
-                        {l.userId ? (
-                          <span className="badge badge-2xs badge-info" title={l.userEmail || ''}>
-                            User #{l.userId}
-                          </span>
-                        ) : (
-                          <span className="text-2xs text-muted">Anonymous Visitor</span>
-                        )}
-                      </td>
-                      <td className="text-secondary text-2xs">
-                        {l.vehicleMake || l.vehicleModel ? `${l.vehicleMake || ''} ${l.vehicleModel || ''}` : '—'}
-                      </td>
-                      <td className="text-secondary text-2xs">{l.serviceName || l.serviceSlug || '—'}</td>
-                      <td className="text-secondary text-2xs">{l.city ? `${l.city}, ${l.state || ''}` : '—'}</td>
-                      <td className="font-mono text-2xs">
-                        {l.phoneNumber ? (
-                          <a
-                            href={`tel:${l.phoneNumber}`}
-                            className="text-primary hover:underline font-mono inline-flex items-center gap-1"
-                            title={`Call customer: ${l.phoneNumber}`}
+                  {leadsData.content.map((l) => {
+                    const personName = l.userFullName || l.customerName;
+                    return (
+                      <tr key={l.id}>
+                        <td>
+                          {personName ? (
+                            <strong className="text-white block font-medium">{personName}</strong>
+                          ) : l.userId ? (
+                            <span className="badge badge-2xs badge-info font-mono">User #{l.userId}</span>
+                          ) : (
+                            <span className="text-secondary font-medium">Unknown visitor</span>
+                          )}
+                          <span
+                            className="text-3xs text-muted font-mono block mt-0.5 truncate max-w-[140px]"
+                            title={`Diagnostic Session: ${l.sessionId} | Event: ${l.eventId}`}
                           >
-                            <span>📞</span>
-                            <span>{l.phoneNumber}</span>
-                          </a>
-                        ) : l.maskedPhoneNumber ? (
-                          <span className="text-muted" title="Masked visitor phone">{l.maskedPhoneNumber}</span>
-                        ) : (
-                          <span className="text-muted/60">—</span>
-                        )}
-                      </td>
-                      <td className="text-2xs text-muted font-mono">
-                        {new Date(l.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}{' '}
-                        {new Date(l.createdAt).toLocaleDateString()}
-                      </td>
-                    </tr>
-                  ))}
+                            Session: {l.sessionId ? l.sessionId.substring(0, 15) + '...' : '—'}
+                          </span>
+                        </td>
+                        <td className="font-mono text-2xs">
+                          {l.phoneNumber ? (
+                            <a
+                              href={`tel:${l.phoneNumber}`}
+                              className="text-primary hover:underline font-mono inline-flex items-center gap-1"
+                              title={`Call customer: ${l.phoneNumber}`}
+                            >
+                              <span>📞</span>
+                              <span>{l.phoneNumber}</span>
+                            </a>
+                          ) : l.maskedPhoneNumber ? (
+                            <span className="text-muted" title="Masked visitor phone">{l.maskedPhoneNumber}</span>
+                          ) : (
+                            <span className="text-muted/60">—</span>
+                          )}
+                        </td>
+                        <td>
+                          <span
+                            className="badge badge-2xs badge-outline font-mono truncate max-w-[130px] block"
+                            title={`Acquisition Channel: ${l.source || 'organic_direct'}`}
+                          >
+                            {l.source || 'homepage_search'}
+                          </span>
+                        </td>
+                        <td>
+                          <span
+                            className={`badge badge-xs ${
+                              l.eventType.includes('SUBMITTED')
+                                ? 'badge-primary'
+                                : l.eventType.includes('REGISTERED')
+                                ? 'badge-success'
+                                : 'badge-secondary'
+                            }`}
+                          >
+                            {l.eventType}
+                          </span>
+                        </td>
+                        <td className="text-secondary text-2xs">
+                          {l.vehicleMake || l.vehicleModel ? `${l.vehicleMake || ''} ${l.vehicleModel || ''}` : '—'}
+                        </td>
+                        <td className="text-secondary text-2xs truncate max-w-[140px]">{l.serviceName || l.serviceSlug || '—'}</td>
+                        <td className="text-secondary text-2xs">{l.city ? `${l.city}, ${l.state || ''}` : '—'}</td>
+                        <td className="text-2xs text-muted font-mono whitespace-nowrap">
+                          {new Date(l.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}{' '}
+                          {new Date(l.createdAt).toLocaleDateString()}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
 
@@ -2264,15 +2471,39 @@ export const AdminDashboardPage: React.FC = () => {
 
           {garagesError && <Alert type="error" message={garagesError} className="mb-4" />}
 
-          {loadingGarages ? (
-            <div className="center-loader py-8">
-              <div className="spinner"></div>
-            </div>
-          ) : pendingGarages.length === 0 ? (
-            <p className="text-xs text-muted text-center py-8">No pending garage submissions awaiting review. Queue is clear!</p>
-          ) : (
-            <div className="table-responsive">
-              <table className="table text-xs">
+          {/* Search control */}
+          <div className="mb-4">
+            <AdminSearchBar
+              value={pendingGarageSearch}
+              onChange={(val) => setPendingGarageSearch(val)}
+              placeholder="Search pending workshops by name, city, or ID..."
+            />
+          </div>
+
+          {(() => {
+            const filteredPendingGarages = pendingGarages.filter((g) => {
+              if (!pendingGarageSearch.trim()) return true;
+              const q = pendingGarageSearch.toLowerCase();
+              return (
+                g.name.toLowerCase().includes(q) ||
+                g.city.toLowerCase().includes(q) ||
+                String(g.id).includes(q)
+              );
+            });
+
+            return loadingGarages ? (
+              <div className="center-loader py-8">
+                <div className="spinner"></div>
+              </div>
+            ) : filteredPendingGarages.length === 0 ? (
+              <p className="text-xs text-muted text-center py-8">
+                {pendingGarages.length === 0
+                  ? 'No pending garage submissions awaiting review. Queue is clear!'
+                  : `No pending workshops match "${pendingGarageSearch}".`}
+              </p>
+            ) : (
+              <div className="table-responsive">
+                <table className="table text-xs">
                 <thead>
                   <tr>
                     <th>ID</th>
@@ -2284,7 +2515,7 @@ export const AdminDashboardPage: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {pendingGarages.map((g) => (
+                  {filteredPendingGarages.map((g) => (
                     <tr key={g.id}>
                       <td className="font-mono text-2xs">#{g.id}</td>
                       <td>
@@ -2342,7 +2573,8 @@ export const AdminDashboardPage: React.FC = () => {
                 </tbody>
               </table>
             </div>
-          )}
+            );
+          })()}
         </div>
       )}
 
@@ -2360,55 +2592,81 @@ export const AdminDashboardPage: React.FC = () => {
 
           {editsError && <Alert type="error" message={editsError} className="mb-4" />}
 
-          {loadingEdits ? (
-            <div className="center-loader py-8">
-              <div className="spinner"></div>
-            </div>
-          ) : pendingEdits.length === 0 ? (
-            <p className="text-xs text-muted text-center py-8">No pending garage profile modification requests.</p>
-          ) : (
-            <div className="table-responsive">
-              <table className="table text-xs">
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>Garage ID</th>
-                    <th>Proposed Name</th>
-                    <th>Proposed Phone</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pendingEdits.map((edit) => (
-                    <tr key={edit.id}>
-                      <td className="font-mono text-2xs">#{edit.id}</td>
-                      <td className="font-mono text-2xs">#{edit.garageId}</td>
-                      <td className="text-white font-medium">{edit.proposedName}</td>
-                      <td className="font-mono text-2xs">{edit.proposedPhoneNumber}</td>
-                      <td>
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            className="btn btn-primary btn-xs"
-                            onClick={() => handleApproveEdit(edit)}
-                          >
-                            Approve
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-danger btn-xs"
-                            onClick={() => handleRejectEdit(edit)}
-                          >
-                            Reject
-                          </button>
-                        </div>
-                      </td>
+          {/* Search control */}
+          <div className="mb-4">
+            <AdminSearchBar
+              value={editSearch}
+              onChange={(val) => setEditSearch(val)}
+              placeholder="Search profile edits by proposed name, garage ID, edit ID, phone..."
+            />
+          </div>
+
+          {(() => {
+            const filteredPendingEdits = pendingEdits.filter((edit) => {
+              if (!editSearch.trim()) return true;
+              const q = editSearch.toLowerCase();
+              return (
+                edit.proposedName.toLowerCase().includes(q) ||
+                String(edit.garageId).includes(q) ||
+                String(edit.id).includes(q) ||
+                (edit.proposedPhoneNumber && edit.proposedPhoneNumber.includes(q))
+              );
+            });
+
+            return loadingEdits ? (
+              <div className="center-loader py-8">
+                <div className="spinner"></div>
+              </div>
+            ) : filteredPendingEdits.length === 0 ? (
+              <p className="text-xs text-muted text-center py-8">
+                {pendingEdits.length === 0
+                  ? 'No pending garage profile modification requests.'
+                  : `No profile edit requests match "${editSearch}".`}
+              </p>
+            ) : (
+              <div className="table-responsive">
+                <table className="table text-xs">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Garage ID</th>
+                      <th>Proposed Name</th>
+                      <th>Proposed Phone</th>
+                      <th>Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  </thead>
+                  <tbody>
+                    {filteredPendingEdits.map((edit) => (
+                      <tr key={edit.id}>
+                        <td className="font-mono text-2xs">#{edit.id}</td>
+                        <td className="font-mono text-2xs">#{edit.garageId}</td>
+                        <td className="text-white font-medium">{edit.proposedName}</td>
+                        <td className="font-mono text-2xs">{edit.proposedPhoneNumber}</td>
+                        <td>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              className="btn btn-primary btn-xs"
+                              onClick={() => handleApproveEdit(edit)}
+                            >
+                              Approve
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-danger btn-xs"
+                              onClick={() => handleRejectEdit(edit)}
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
         </div>
       )}
 
@@ -2431,15 +2689,53 @@ export const AdminDashboardPage: React.FC = () => {
 
           {claimsError && <Alert type="error" message={claimsError} className="mb-4" />}
 
+          {/* Search bar */}
+          <div className="mb-4">
+            <AdminSearchBar
+              value={claimSearch}
+              onChange={setClaimSearch}
+              placeholder="Search claims by workshop name, claimant name, email, phone, claim/garage ID..."
+            />
+          </div>
+
           {loadingClaims ? (
             <div className="center-loader py-8">
               <div className="spinner"></div>
             </div>
           ) : pendingClaims.length === 0 ? (
             <p className="text-xs text-muted text-center py-8">No pending ownership claims.</p>
-          ) : (
-            <div className="space-y-6">
-              {pendingClaims.map((claim) => {
+          ) : (() => {
+            const filteredClaims = pendingClaims.filter((claim) => {
+              if (!claimSearch.trim()) return true;
+              const q = claimSearch.toLowerCase().trim();
+              return (
+                claim.garageName?.toLowerCase().includes(q) ||
+                (claim.claimantName && claim.claimantName.toLowerCase().includes(q)) ||
+                (claim.claimantFullName && claim.claimantFullName.toLowerCase().includes(q)) ||
+                (claim.claimantEmail && claim.claimantEmail.toLowerCase().includes(q)) ||
+                (claim.claimantPhone && claim.claimantPhone.includes(q)) ||
+                String(claim.id).includes(q) ||
+                String(claim.garageId).includes(q) ||
+                (claim.businessRegNumber && claim.businessRegNumber.toLowerCase().includes(q))
+              );
+            });
+
+            if (filteredClaims.length === 0) {
+              return (
+                <p className="text-xs text-muted text-center py-8">
+                  No claims match "{claimSearch}". Try clearing your search.
+                </p>
+              );
+            }
+
+            return (
+              <div className="space-y-6">
+                {claimSearch.trim() && (
+                  <p className="text-2xs text-muted font-mono">
+                    Showing {filteredClaims.length} of {pendingClaims.length} pending claims matching "{claimSearch}"
+                  </p>
+                )}
+                {filteredClaims.map((claim) => {
                 const approvalCheck = canApproveClaim(claim);
                 const verifiedDocsCount = claim.documents?.filter((d) => d.verificationStatus === 'VERIFIED').length || 0;
                 const totalDocsCount = claim.documents?.length || 0;
@@ -2678,9 +2974,10 @@ export const AdminDashboardPage: React.FC = () => {
                 );
               })}
             </div>
-          )}
-        </div>
-      )}
+          );
+        })()}
+      </div>
+    )}
 
       {/* ============================================================= */}
       {/* TAB: DOCUMENTS VERIFICATION                                  */}
@@ -2707,68 +3004,201 @@ export const AdminDashboardPage: React.FC = () => {
             )}
           </div>
 
-          {/* Quick Workshop Selector & ID Lookup */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4 bg-secondary/10 rounded-xl border border-border/20">
-            <div className="md:col-span-1">
-              <label className="label text-2xs mb-1">Direct Workshop ID Lookup</label>
-              <form onSubmit={handleLoadGarageDocs} className="flex gap-2">
-                <input
-                  type="number"
-                  className="input input-sm flex-1 font-mono"
-                  placeholder="e.g. 1"
-                  value={docGarageIdInput}
-                  onChange={(e) => setDocGarageIdInput(e.target.value)}
+          {/* Workshop Selection & Photo Cards Gallery */}
+          <div className="mb-6 space-y-4">
+            <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
+              <div className="flex-1 max-w-xl">
+                <AdminSearchBar
+                  value={docSearchQuery}
+                  onChange={setDocSearchQuery}
+                  placeholder="Search workshops by name, city, state, or ID to inspect documents..."
                 />
+              </div>
+
+              <form onSubmit={handleLoadGarageDocs} className="flex gap-2 items-center">
+                <div className="relative">
+                  <input
+                    type="number"
+                    className="input input-sm w-36 font-mono text-xs pl-7"
+                    placeholder="Workshop ID"
+                    value={docGarageIdInput}
+                    onChange={(e) => setDocGarageIdInput(e.target.value)}
+                  />
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-2xs text-muted font-mono">#</span>
+                </div>
                 <button
                   type="submit"
-                  className="btn btn-primary btn-sm rounded-lg px-3"
+                  className="btn btn-secondary btn-sm rounded-lg px-3 text-xs"
                   disabled={loadingDocs || !docGarageIdInput.trim()}
                 >
-                  {loadingDocs ? 'Loading...' : 'Inspect'}
+                  Inspect
                 </button>
               </form>
             </div>
 
-            <div className="md:col-span-2">
-              <label className="label text-2xs mb-1">Quick Select from Registered Workshops</label>
-              {allGaragesData.content.length > 0 ? (
-                <div className="flex flex-wrap gap-2 max-h-24 overflow-y-auto p-1">
-                  {allGaragesData.content.slice(0, 10).map((g) => (
+            {(() => {
+              const filteredGarages = allGaragesData.content.filter((g) => {
+                if (!docSearchQuery.trim()) return true;
+                const q = docSearchQuery.toLowerCase().trim();
+                return (
+                  g.name.toLowerCase().includes(q) ||
+                  g.city.toLowerCase().includes(q) ||
+                  (g.state && g.state.toLowerCase().includes(q)) ||
+                  String(g.id).includes(q) ||
+                  (g.phoneNumber && g.phoneNumber.includes(q))
+                );
+              });
+
+              if (allGaragesData.content.length === 0) {
+                return (
+                  <div className="p-6 bg-surface/50 rounded-xl border border-border/30 text-center space-y-2">
+                    <span className="material-symbols-outlined text-3xl text-muted">storefront</span>
+                    <p className="text-xs text-muted">Workshop registry not loaded yet.</p>
                     <button
-                      key={g.id}
                       type="button"
-                      onClick={() => handleLoadGarageDocs(g.id)}
-                      className={`text-2xs px-2.5 py-1.5 rounded-lg border transition-all text-left flex items-center gap-2 ${
-                        docGarageIdInput === String(g.id)
-                          ? 'bg-primary/20 border-primary text-white font-medium shadow-sm'
-                          : 'bg-card border-border/40 text-muted hover:text-white hover:border-border'
-                      }`}
+                      className="btn btn-secondary btn-xs rounded-full px-4"
+                      onClick={() => fetchAllGarages(0)}
                     >
-                      <span className="font-mono text-3xs text-secondary">#{g.id}</span>
-                      <span className="truncate max-w-[120px]">{g.name}</span>
-                      <span
-                        className={`badge badge-2xs font-mono ${
-                          g.isVerified ? 'badge-success' : 'badge-secondary'
-                        }`}
-                      >
-                        {g.isVerified ? 'Verified' : 'Unverified'}
-                      </span>
+                      Load Workshop Directory
                     </button>
-                  ))}
+                  </div>
+                );
+              }
+
+              if (filteredGarages.length === 0) {
+                return (
+                  <div className="p-6 bg-surface/50 rounded-xl border border-border/30 text-center space-y-2">
+                    <p className="text-xs text-muted">No workshops match "{docSearchQuery}".</p>
+                    <button
+                      type="button"
+                      className="text-primary text-xs hover:underline"
+                      onClick={() => setDocSearchQuery('')}
+                    >
+                      Clear Search
+                    </button>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {filteredGarages.slice(0, 8).map((g) => {
+                    const isSelected = docGarageIdInput === String(g.id);
+                    const photoUrl = g.coverPhotoId
+                      ? api.garages.getPhotoUrl(g.id, g.coverPhotoId)
+                      : null;
+
+                    return (
+                      <article
+                        key={g.id}
+                        className={`rounded-xl border overflow-hidden transition-all duration-200 cursor-pointer flex flex-col justify-between ${
+                          isSelected
+                            ? 'border-primary ring-2 ring-primary/40 bg-surface/90 shadow-lg'
+                            : 'border-border/50 bg-surface/40 hover:border-border hover:bg-surface/70'
+                        }`}
+                        onClick={() => handleLoadGarageDocs(g.id)}
+                      >
+                        {/* Media Section */}
+                        <div className="relative h-28 bg-elevated/70 overflow-hidden flex items-center justify-center">
+                          {photoUrl ? (
+                            <img
+                              src={photoUrl}
+                              alt={g.name}
+                              className="w-full h-full object-cover"
+                              loading="lazy"
+                              onError={(e) => {
+                                (e.target as HTMLElement).style.display = 'none';
+                                const sibling = (e.target as HTMLElement).nextElementSibling;
+                                if (sibling) (sibling as HTMLElement).style.display = 'flex';
+                              }}
+                            />
+                          ) : null}
+                          <div
+                            className="flex flex-col items-center justify-center text-muted"
+                            style={{ display: photoUrl ? 'none' : 'flex' }}
+                          >
+                            <span className="material-symbols-outlined text-3xl text-secondary/60">garage</span>
+                            <span className="text-3xs text-muted mt-1">{g.city}</span>
+                          </div>
+
+                          {/* Floating Badges */}
+                          <div className="absolute top-2 left-2 flex items-center gap-1">
+                            <span className="font-mono text-3xs font-bold text-white bg-black/60 backdrop-blur-sm px-2 py-0.5 rounded border border-white/20">
+                              #{g.id}
+                            </span>
+                            {g.isVerified ? (
+                              <span className="badge badge-success text-3xs flex items-center gap-0.5 shadow">
+                                <span className="material-symbols-outlined text-3xs">verified</span> Verified
+                              </span>
+                            ) : (
+                              <span className="badge badge-secondary text-3xs shadow">Unverified</span>
+                            )}
+                          </div>
+
+                          <div className="absolute top-2 right-2">
+                            <span
+                              className={`badge text-3xs font-mono ${
+                                g.approvalStatus === 'APPROVED'
+                                  ? 'badge-success'
+                                  : g.approvalStatus === 'PENDING'
+                                  ? 'badge-warning'
+                                  : g.approvalStatus === 'SUSPENDED'
+                                  ? 'badge-danger'
+                                  : 'badge-secondary'
+                              }`}
+                            >
+                              {g.approvalStatus}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Content Section */}
+                        <div className="p-3 flex-1 flex flex-col justify-between">
+                          <div>
+                            <h4 className="text-xs font-bold text-white truncate" title={g.name}>
+                              {g.name}
+                            </h4>
+                            <p className="text-2xs text-secondary mt-0.5 flex items-center gap-1">
+                              <span>📍</span>
+                              <span className="truncate">{g.city}, {g.state}</span>
+                            </p>
+                            {g.addressLine1 && (
+                              <p className="text-3xs text-muted truncate mt-0.5" title={g.addressLine1}>
+                                {g.addressLine1}
+                              </p>
+                            )}
+                            <div className="flex items-center gap-2 mt-2">
+                              <span className="text-3xs font-mono px-2 py-0.5 rounded bg-elevated border border-border/40 text-muted">
+                                📄 {g.documentsCount ?? 0} doc{(g.documentsCount ?? 0) === 1 ? '' : 's'}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="mt-3 pt-2 border-t border-border/30 flex items-center justify-between">
+                            <span className="text-3xs text-muted">
+                              {isSelected ? '● Inspected' : 'Click card'}
+                            </span>
+                            <button
+                              type="button"
+                              className={`btn btn-xs rounded-full px-2.5 py-0.5 text-2xs flex items-center gap-1 ${
+                                isSelected ? 'btn-primary' : 'btn-secondary'
+                              }`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleLoadGarageDocs(g.id);
+                              }}
+                            >
+                              <span className="material-symbols-outlined text-xs">description</span>
+                              <span>{isSelected && loadingDocs ? 'Loading...' : 'Inspect Docs'}</span>
+                            </button>
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  })}
                 </div>
-              ) : (
-                <div className="text-2xs text-muted flex items-center gap-2 py-2">
-                  <span>No cached workshops.</span>
-                  <button
-                    type="button"
-                    className="text-primary hover:underline"
-                    onClick={() => fetchAllGarages(0)}
-                  >
-                    Load workshop list
-                  </button>
-                </div>
-              )}
-            </div>
+              );
+            })()}
           </div>
 
           {docsError && <Alert type="error" message={docsError} className="mb-4" />}
@@ -2930,47 +3360,384 @@ export const AdminDashboardPage: React.FC = () => {
 
           <div className="card p-6 bg-card border border-border/30 md:col-span-2">
             <div className="flex-between items-center mb-4">
-              <h3 className="section-title text-base">Active Master Service Catalogue</h3>
+              <div>
+                <h3 className="section-title text-base">Active Master Service Catalogue</h3>
+                <p className="text-2xs text-secondary mt-0.5">
+                  Platform standardized repair, overhaul, and maintenance codes available to workshops.
+                </p>
+              </div>
               <button type="button" className="btn btn-secondary btn-xs" onClick={fetchServices}>
                 Refresh
               </button>
             </div>
+
+            {/* Service Search Bar */}
+            <div className="mb-3">
+              <AdminSearchBar
+                value={serviceSearch}
+                onChange={setServiceSearch}
+                placeholder="Search master services by name, category, slug, or ID..."
+              />
+            </div>
+
+            {/* Category Filter Pills using .btn-pill */}
+            <div className="flex flex-wrap gap-1.5 mb-4">
+              {[
+                { id: 'ALL', label: 'All Categories' },
+                { id: 'PERIODIC_MAINTENANCE', label: 'Periodic Maintenance' },
+                { id: 'BODY_AND_PAINT', label: 'Body & Paint' },
+                { id: 'WHEELS_AND_TYRES', label: 'Wheels & Tyres' },
+                { id: 'ELECTRICAL', label: 'Electrical' },
+                { id: 'MECHANICAL_REPAIR', label: 'Mechanical Repair' },
+              ].map((cat) => (
+                <button
+                  key={cat.id}
+                  type="button"
+                  className={`btn-pill text-2xs ${serviceCategoryFilter === cat.id ? 'active' : ''}`}
+                  onClick={() => setServiceCategoryFilter(cat.id)}
+                >
+                  {cat.label}
+                </button>
+              ))}
+            </div>
+
             {servicesError && <Alert type="error" message={servicesError} className="mb-4" />}
             {loadingServices ? (
               <div className="center-loader py-8">
                 <div className="spinner"></div>
               </div>
-            ) : (
+            ) : (() => {
+              const filteredServices = services.filter((s) => {
+                const matchesCategory = serviceCategoryFilter === 'ALL' || s.category === serviceCategoryFilter;
+                if (!matchesCategory) return false;
+                if (!serviceSearch.trim()) return true;
+                const q = serviceSearch.toLowerCase().trim();
+                return (
+                  s.name.toLowerCase().includes(q) ||
+                  s.category.toLowerCase().includes(q) ||
+                  s.slug.toLowerCase().includes(q) ||
+                  String(s.id).includes(q) ||
+                  (s.description && s.description.toLowerCase().includes(q))
+                );
+              });
+
+              if (services.length === 0) {
+                return <p className="text-xs text-muted text-center py-8">No services in catalogue.</p>;
+              }
+
+              if (filteredServices.length === 0) {
+                return (
+                  <div className="text-center py-8 bg-surface/30 rounded-xl border border-dashed border-border/30">
+                    <p className="text-xs text-muted">
+                      No services match "{serviceSearch}" {serviceCategoryFilter !== 'ALL' ? `in category ${serviceCategoryFilter}` : ''}.
+                    </p>
+                    <button
+                      type="button"
+                      className="text-primary text-xs hover:underline mt-2 inline-block"
+                      onClick={() => {
+                        setServiceSearch('');
+                        setServiceCategoryFilter('ALL');
+                      }}
+                    >
+                      Reset filters
+                    </button>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="space-y-2">
+                  <div className="text-2xs text-muted font-mono">
+                    Showing {filteredServices.length} of {services.length} services
+                  </div>
+                  <div className="table-responsive">
+                    <table className="table text-xs">
+                      <thead>
+                        <tr>
+                          <th>ID</th>
+                          <th>Service Name</th>
+                          <th>Category</th>
+                          <th>Slug</th>
+                          <th>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredServices.map((s) => (
+                          <tr key={s.id}>
+                            <td className="font-mono text-2xs">#{s.id}</td>
+                            <td className="text-white font-medium">{s.name}</td>
+                            <td className="text-secondary">{s.category}</td>
+                            <td className="font-mono text-2xs text-muted">{s.slug}</td>
+                            <td>
+                              <span className={`badge badge-xs ${s.isActive ? 'badge-success' : 'badge-secondary'}`}>
+                                {s.isActive ? 'Active' : 'Inactive'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================= */}
+      {/* TAB 10: REVIEW REPORTS & CONTENT MODERATION QUEUE             */}
+      {/* ============================================================= */}
+      {activeTab === 'reports' && (
+        <div className="card p-6 bg-card border border-border/30 space-y-6">
+          <div className="flex-between items-center mb-4">
+            <div>
+              <h3 className="section-title text-base flex items-center gap-2">
+                <span>🚩 Workshop Review Reports & Moderation Queue</span>
+              </h3>
+              <p className="text-2xs text-secondary mt-1">
+                Investigate reviews reported by workshop owners, assess compliance with MeriGarage standards, and execute atomic moderation decisions.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="btn btn-secondary btn-xs"
+              onClick={() => fetchReviewReports(reportPage)}
+              disabled={loadingReports}
+            >
+              {loadingReports ? 'Refreshing...' : 'Refresh'}
+            </button>
+          </div>
+
+          {/* Search bar & Status filter pills */}
+          <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
+            <div className="flex-1 max-w-lg">
+              <AdminSearchBar
+                value={reportSearchQuery}
+                onChange={(q) => {
+                  setReportSearchQuery(q);
+                  setReportPage(0);
+                }}
+                placeholder="Search reports by workshop name, reviewer, reason, reporter, or ID..."
+              />
+            </div>
+
+            <div className="flex flex-wrap gap-1.5">
+              {(['ALL', 'PENDING', 'RESOLVED', 'DISMISSED'] as const).map((status) => (
+                <button
+                  key={status}
+                  type="button"
+                  className={`btn-pill text-2xs ${reportStatusFilter === status ? 'active' : ''}`}
+                  onClick={() => {
+                    setReportStatusFilter(status);
+                    setReportPage(0);
+                  }}
+                >
+                  {status === 'ALL'
+                    ? 'All Reports'
+                    : status === 'PENDING'
+                    ? 'Pending Review'
+                    : status === 'RESOLVED'
+                    ? 'Resolved'
+                    : 'Dismissed'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {reportsError && <Alert type="error" message={reportsError} className="mb-4" />}
+
+          {loadingReports ? (
+            <div className="center-loader py-12">
+              <div className="spinner"></div>
+            </div>
+          ) : reportsData.content.length === 0 ? (
+            <div className="text-center py-12 bg-surface/30 rounded-xl border border-dashed border-border/30">
+              <span className="material-symbols-outlined text-3xl text-muted mb-2 block">verified_user</span>
+              <p className="text-xs text-muted">
+                {reportSearchQuery.trim() || reportStatusFilter !== 'ALL'
+                  ? 'No review reports match your selected criteria.'
+                  : 'No customer review reports on file. Moderation queue is clear!'}
+              </p>
+              {(reportSearchQuery.trim() || reportStatusFilter !== 'ALL') && (
+                <button
+                  type="button"
+                  className="text-primary text-xs hover:underline mt-2 inline-block"
+                  onClick={() => {
+                    setReportSearchQuery('');
+                    setReportStatusFilter('ALL');
+                    setReportPage(0);
+                  }}
+                >
+                  Clear filters
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex-between items-center text-2xs text-muted font-mono">
+                <span>
+                  Showing {reportsData.content.length} of {reportsData.totalElements} report{reportsData.totalElements === 1 ? '' : 's'}
+                </span>
+                <span>Page {reportsData.page + 1} of {Math.max(1, reportsData.totalPages)}</span>
+              </div>
+
               <div className="table-responsive">
                 <table className="table text-xs">
                   <thead>
                     <tr>
-                      <th>ID</th>
-                      <th>Service Name</th>
-                      <th>Category</th>
-                      <th>Slug</th>
+                      <th>Report ID</th>
+                      <th>Workshop</th>
+                      <th>Customer Review</th>
+                      <th>Reason & Report Note</th>
+                      <th>Reporter</th>
+                      <th>Reported Date</th>
                       <th>Status</th>
+                      <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {services.map((s) => (
-                      <tr key={s.id}>
-                        <td className="font-mono text-2xs">#{s.id}</td>
-                        <td className="text-white font-medium">{s.name}</td>
-                        <td className="text-secondary">{s.category}</td>
-                        <td className="font-mono text-2xs text-muted">{s.slug}</td>
+                    {reportsData.content.map((rep) => (
+                      <tr key={rep.id}>
+                        <td className="font-mono text-2xs font-semibold text-white">
+                          #{rep.id}
+                        </td>
                         <td>
-                          <span className={`badge badge-xs ${s.isActive ? 'badge-success' : 'badge-secondary'}`}>
-                            {s.isActive ? 'Active' : 'Inactive'}
+                          <div>
+                            <span className="text-white font-medium block truncate max-w-[150px]">
+                              {rep.garageName}
+                            </span>
+                            <span className="text-3xs text-secondary block font-mono">
+                              #{rep.garageId} {rep.garageCity ? `• ${rep.garageCity}` : ''}
+                            </span>
+                          </div>
+                        </td>
+                        <td>
+                          <div className="max-w-[240px]">
+                            <div className="flex items-center gap-1.5 mb-0.5">
+                              <span className="text-white font-medium truncate max-w-[120px]">
+                                {rep.authorFullName}
+                              </span>
+                              <span className="text-amber-400 text-3xs font-mono font-bold">
+                                ⭐ {rep.overallRating ?? '?'}/5
+                              </span>
+                            </div>
+                            {rep.reviewTitle && (
+                              <span className="text-white text-2xs font-semibold block truncate">
+                                "{rep.reviewTitle}"
+                              </span>
+                            )}
+                            <p className="text-3xs text-muted line-clamp-2 italic">
+                              "{rep.reviewText}"
+                            </p>
+                            <span className="text-3xs font-mono text-secondary block mt-0.5">
+                              Status: {rep.reviewStatus}
+                            </span>
+                          </div>
+                        </td>
+                        <td>
+                          <div className="max-w-[200px]">
+                            <span className="badge badge-warning text-3xs font-mono mb-1 inline-block">
+                              {rep.reportReason.replace(/_/g, ' ')}
+                            </span>
+                            {rep.details ? (
+                              <p className="text-3xs text-secondary line-clamp-2">
+                                {rep.details}
+                              </p>
+                            ) : (
+                              <span className="text-3xs text-muted italic">No extra notes</span>
+                            )}
+                          </div>
+                        </td>
+                        <td>
+                          <div>
+                            <span className="text-white text-2xs block truncate max-w-[120px]">
+                              {rep.reporterFullName}
+                            </span>
+                            <span className="text-3xs text-muted block truncate max-w-[120px]">
+                              {rep.reporterEmail || (rep.reporterUserId ? `User #${rep.reporterUserId}` : '—')}
+                            </span>
+                          </div>
+                        </td>
+                        <td>
+                          <span className="font-mono text-3xs text-muted whitespace-nowrap">
+                            {new Date(rep.createdAt).toLocaleDateString()}
                           </span>
+                        </td>
+                        <td>
+                          <span
+                            className={`badge badge-xs font-mono font-medium ${
+                              rep.status === 'PENDING'
+                                ? 'badge-warning'
+                                : rep.status === 'RESOLVED'
+                                ? 'badge-success'
+                                : 'badge-secondary'
+                            }`}
+                          >
+                            {rep.status}
+                          </span>
+                          {rep.resolvedByAdminName && (
+                            <span className="text-3xs text-muted block font-mono mt-0.5" title={`Moderated by ${rep.resolvedByAdminName}`}>
+                              by {rep.resolvedByAdminName}
+                            </span>
+                          )}
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-xs rounded-full px-2.5 py-1 text-2xs flex items-center gap-1"
+                            onClick={() => {
+                              setSelectedReport(rep);
+                              setModerationAction('DISMISS');
+                              setModerationNotes('');
+                              setModerationError(null);
+                              setModerationModalOpen(true);
+                            }}
+                          >
+                            <span className="material-symbols-outlined text-xs">gavel</span>
+                            <span>{rep.status === 'PENDING' ? 'Moderate' : 'Inspect'}</span>
+                          </button>
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-            )}
-          </div>
+
+              {/* Pagination */}
+              {reportsData.totalPages > 1 && (
+                <div className="flex justify-between items-center pt-3 border-t border-border/30">
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-xs rounded-full px-3"
+                    disabled={reportPage <= 0 || loadingReports}
+                    onClick={() => {
+                      const next = Math.max(0, reportPage - 1);
+                      setReportPage(next);
+                      fetchReviewReports(next);
+                    }}
+                  >
+                    ← Previous
+                  </button>
+                  <span className="text-2xs text-muted font-mono">
+                    Page {reportPage + 1} of {reportsData.totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-xs rounded-full px-3"
+                    disabled={reportPage >= reportsData.totalPages - 1 || loadingReports}
+                    onClick={() => {
+                      const next = reportPage + 1;
+                      setReportPage(next);
+                      fetchReviewReports(next);
+                    }}
+                  >
+                    Next →
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -3312,11 +4079,18 @@ export const AdminDashboardPage: React.FC = () => {
           </div>
         ) : selectedUserDetail ? (
           <div className="space-y-4 text-xs">
-            <div className="grid grid-cols-2 gap-3 p-3 bg-secondary/10 rounded border border-border/20">
-              <div>
-                <span className="text-muted block text-2xs">Full Name</span>
-                <span className="text-white font-bold">{selectedUserDetail.user.fullName}</span>
-              </div>
+            <div className="flex items-center gap-4 p-3 bg-secondary/10 rounded border border-border/20">
+              <UserAvatar
+                photoUrl={selectedUserDetail.user.profilePhotoUrl}
+                name={selectedUserDetail.user.fullName}
+                email={selectedUserDetail.user.email}
+                size="lg"
+              />
+              <div className="grid grid-cols-2 gap-3 flex-1">
+                <div>
+                  <span className="text-muted block text-2xs">Full Name</span>
+                  <span className="text-white font-bold">{selectedUserDetail.user.fullName}</span>
+                </div>
               <div>
                 <span className="text-muted block text-2xs">Email Address</span>
                 {selectedUserDetail.user.email ? (
@@ -3362,11 +4136,22 @@ export const AdminDashboardPage: React.FC = () => {
                 <span className="text-white">{selectedUserDetail.user.registrationSource || 'Direct'}</span>
               </div>
             </div>
+          </div>
 
             {/* Account Roles & Permissions Display (Read-Only) */}
             <div className="p-3 bg-secondary/10 rounded border border-border/20 space-y-3">
               <div className="flex-between items-center">
                 <h4 className="font-semibold text-white">🔐 Account Roles & Authorization</h4>
+                {!selectedUserDetail.user.roles.includes('ROLE_ADMIN') && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-xs rounded-full px-2.5 py-1 text-2xs flex items-center gap-1 hover:border-primary text-secondary hover:text-white"
+                    onClick={() => openRoleSwitchModal(selectedUserDetail.user)}
+                  >
+                    <span className="material-symbols-outlined text-xs">swap_horiz</span>
+                    <span>Switch Primary Role</span>
+                  </button>
+                )}
               </div>
 
               {/* Roles Badge List */}
@@ -3519,6 +4304,149 @@ export const AdminDashboardPage: React.FC = () => {
         )}
       </Modal>
 
+      {/* User Primary Role Switch Confirmation Modal */}
+      <Modal
+        isOpen={roleSwitchModalOpen}
+        onClose={() => !submittingRoleSwitch && setRoleSwitchModalOpen(false)}
+        title="Switch Account Primary Role"
+      >
+        {roleSwitchUser && (
+          <form onSubmit={handleConfirmRoleSwitch} className="space-y-4 text-xs">
+            <div className="p-3 bg-secondary/10 rounded border border-border/20 space-y-1.5">
+              <div className="flex-between">
+                <span className="text-muted">Target User:</span>
+                <strong className="text-white">{roleSwitchUser.fullName}</strong>
+              </div>
+              <div className="flex-between">
+                <span className="text-muted">Email:</span>
+                <span className="text-secondary">{roleSwitchUser.email}</span>
+              </div>
+              {roleSwitchUser.phoneNumber && (
+                <div className="flex-between">
+                  <span className="text-muted">Phone:</span>
+                  <span className="font-mono text-secondary">{roleSwitchUser.phoneNumber}</span>
+                </div>
+              )}
+              <div className="flex-between">
+                <span className="text-muted">Current Primary Role:</span>
+                <span className="font-mono font-semibold text-primary">
+                  {roleSwitchUser.roles.includes('ROLE_GARAGE_OWNER')
+                    ? 'Garage Owner (ROLE_GARAGE_OWNER)'
+                    : 'Vehicle Owner (ROLE_USER)'}
+                </span>
+              </div>
+            </div>
+
+            {roleSwitchError && <Alert type="error" message={roleSwitchError} className="mb-2" />}
+
+            {/* Role Selection */}
+            <div>
+              <label className="label font-bold text-white mb-1.5">
+                Target Primary Role <span className="text-danger">*</span>
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTargetPrimaryRole('ROLE_USER')}
+                  className={`p-3 rounded-lg border text-left transition-all ${
+                    targetPrimaryRole === 'ROLE_USER'
+                      ? 'bg-primary/20 border-primary text-white ring-1 ring-primary'
+                      : 'bg-card border-border/40 text-muted hover:text-white'
+                  }`}
+                >
+                  <div className="font-bold flex items-center gap-1.5 mb-1">
+                    <span>🚗</span>
+                    <span>Vehicle Owner</span>
+                  </div>
+                  <div className="text-3xs text-muted leading-tight">
+                    ROLE_USER — Searches garages, books quotes, writes reviews, manages vehicles. Uses Vehicle Owner Login.
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTargetPrimaryRole('ROLE_GARAGE_OWNER')}
+                  className={`p-3 rounded-lg border text-left transition-all ${
+                    targetPrimaryRole === 'ROLE_GARAGE_OWNER'
+                      ? 'bg-primary/20 border-primary text-white ring-1 ring-primary'
+                      : 'bg-card border-border/40 text-muted hover:text-white'
+                  }`}
+                >
+                  <div className="font-bold flex items-center gap-1.5 mb-1">
+                    <span>🔧</span>
+                    <span>Garage Owner</span>
+                  </div>
+                  <div className="text-3xs text-muted leading-tight">
+                    ROLE_GARAGE_OWNER — Accesses Owner Hub, workshop listing, workshop claims, responds to quotes. Uses Garage Login.
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            {/* Warning & Ownership Notice */}
+            <div className="p-3 rounded-lg bg-warning/10 border border-warning/30 text-warning text-2xs space-y-1.5 leading-relaxed">
+              <div className="font-bold flex items-center gap-1 text-xs text-warning">
+                <span>⚠️</span>
+                <span>Important Access & Ownership Notice</span>
+              </div>
+              <p>
+                Changing the primary account role updates the user's login portal compatibility and visible navigation features.
+              </p>
+              <p className="font-semibold text-white">
+                Changing the primary role does NOT automatically grant, create, or revoke garage ownership or claim records.
+              </p>
+              <p className="text-muted">
+                Existing workshop claims, approvals, and private quote histories are safely preserved and remain bound to this account. The user will be required to authenticate via the matching portal corresponding to their updated role.
+              </p>
+            </div>
+
+            {/* Linked Records Assessment */}
+            <div className="p-2.5 bg-surface/50 rounded border border-border/30 text-2xs space-y-1">
+              <span className="text-muted block font-semibold">Associated Account Records:</span>
+              <div className="flex gap-4">
+                <span>
+                  Linked Workshops: <strong className="text-white font-mono">{roleSwitchUser.linkedGaragesCount}</strong>
+                </span>
+                <span>
+                  Quote Requests: <strong className="text-white font-mono">{roleSwitchUser.quoteRequestsCount}</strong>
+                </span>
+              </div>
+            </div>
+
+            {/* Audit Reason */}
+            <div>
+              <label className="label">
+                Administrative Audit Justification <span className="text-danger">*</span>
+              </label>
+              <textarea
+                className="input w-full h-20"
+                placeholder="State the compliance justification for switching this account's primary role (recorded in admin audit logs)..."
+                value={roleSwitchReason}
+                onChange={(e) => setRoleSwitchReason(e.target.value)}
+                required
+              ></textarea>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => setRoleSwitchModalOpen(false)}
+                disabled={submittingRoleSwitch}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="btn btn-primary btn-sm"
+                disabled={submittingRoleSwitch}
+              >
+                {submittingRoleSwitch ? 'Applying Role Change...' : 'Confirm Role Switch'}
+              </button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
       {/* Workshop Inspection Modal */}
       <Modal isOpen={garageModalOpen} onClose={() => setGarageModalOpen(false)} title="Workshop Dossier & Audit History">
         {loadingGarageDetail ? (
@@ -3593,13 +4521,33 @@ export const AdminDashboardPage: React.FC = () => {
 
             {/* Fast Moderation Actions */}
             <div className="flex justify-between items-center pt-2 border-t border-border/20">
-              <button
-                type="button"
-                className="btn btn-secondary btn-xs"
-                onClick={() => handleToggleVerified(selectedGarageDetail)}
-              >
-                {selectedGarageDetail.isVerified ? 'Revoke Verified Badge' : 'Award Verified Badge'}
-              </button>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-xs"
+                  onClick={() => handleToggleVerified(selectedGarageDetail)}
+                >
+                  {selectedGarageDetail.isVerified ? 'Revoke Verified Badge' : 'Award Verified Badge'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-xs flex items-center gap-1 text-primary hover:border-primary"
+                  onClick={() =>
+                    setAdminPosterGarage({
+                      id: selectedGarageDetail.id,
+                      name: selectedGarageDetail.name,
+                      slug: selectedGarageDetail.slug,
+                      city: selectedGarageDetail.city,
+                      state: selectedGarageDetail.state,
+                      isVerified: selectedGarageDetail.isVerified,
+                    })
+                  }
+                  title="Generate Review Poster for this workshop"
+                >
+                  <span className="material-symbols-outlined text-xs">qr_code_2</span>
+                  <span>Review Poster</span>
+                </button>
+              </div>
               <div className="flex gap-2">
                 {selectedGarageDetail.approvalStatus === 'APPROVED' ? (
                   <button
@@ -3777,6 +4725,233 @@ export const AdminDashboardPage: React.FC = () => {
           </form>
         )}
       </Modal>
+
+      {/* Review Report & Content Moderation Modal */}
+      <Modal
+        isOpen={moderationModalOpen}
+        onClose={() => setModerationModalOpen(false)}
+        title="Review Moderation Decision Dossier"
+      >
+        {selectedReport && (
+          <form onSubmit={handleModerateReport} className="space-y-4 text-xs max-h-[75vh] overflow-y-auto pr-1">
+            {moderationError && <Alert type="error" message={moderationError} className="mb-2" />}
+
+            {/* Top Summary */}
+            <div className="grid grid-cols-2 gap-3 p-3 bg-secondary/10 rounded-xl border border-border/20">
+              <div>
+                <span className="text-muted block text-2xs">Report ID</span>
+                <span className="font-mono text-white font-bold">Report #{selectedReport.id}</span>
+              </div>
+              <div>
+                <span className="text-muted block text-2xs">Report Status</span>
+                <span className={`badge badge-xs font-mono ${
+                  selectedReport.status === 'PENDING' ? 'badge-warning' :
+                  selectedReport.status === 'RESOLVED' ? 'badge-success' : 'badge-secondary'
+                }`}>
+                  {selectedReport.status}
+                </span>
+              </div>
+              <div>
+                <span className="text-muted block text-2xs">Workshop</span>
+                <span className="text-white font-medium">{selectedReport.garageName}</span>
+                <span className="text-3xs text-muted block">ID #{selectedReport.garageId} {selectedReport.garageCity ? `• ${selectedReport.garageCity}` : ''}</span>
+              </div>
+              <div>
+                <span className="text-muted block text-2xs">Reported Date</span>
+                <span className="text-white font-mono">{new Date(selectedReport.createdAt).toLocaleString()}</span>
+              </div>
+            </div>
+
+            {/* Full Reported Review Context */}
+            <div className="p-3.5 bg-surface/60 rounded-xl border border-border/30 space-y-2">
+              <div className="flex-between items-center">
+                <span className="text-2xs font-bold text-white uppercase tracking-wider flex items-center gap-1">
+                  <span>💬 Contested Customer Review</span>
+                  <span className="font-mono font-normal text-muted">(Review #{selectedReport.reviewId})</span>
+                </span>
+                <span className="text-amber-400 font-mono font-bold text-xs">
+                  ⭐ {selectedReport.overallRating ?? '?'}/5
+                </span>
+              </div>
+
+              <div className="text-2xs text-secondary flex items-center gap-2">
+                <span>Author: <strong className="text-white">{selectedReport.authorFullName}</strong></span>
+                {selectedReport.authorEmail && (
+                  <span className="text-muted font-mono">({selectedReport.authorEmail})</span>
+                )}
+                <span className="badge badge-2xs font-mono">{selectedReport.reviewStatus}</span>
+              </div>
+
+              {selectedReport.reviewTitle && (
+                <h5 className="text-xs font-bold text-white">"{selectedReport.reviewTitle}"</h5>
+              )}
+              <div className="p-2.5 rounded bg-elevated/80 border border-border/40 text-white leading-relaxed whitespace-pre-wrap text-2xs">
+                {selectedReport.reviewText}
+              </div>
+            </div>
+
+            {/* Workshop Owner's Allegation / Reason */}
+            <div className="p-3.5 bg-warning/5 rounded-xl border border-warning/20 space-y-1.5">
+              <span className="text-2xs font-bold text-warning uppercase tracking-wider flex items-center gap-1">
+                <span>⚠️ Workshop Grievance & Report Reason</span>
+              </span>
+              <div className="flex items-center gap-2">
+                <span className="badge badge-warning text-xs font-mono font-bold">
+                  {selectedReport.reportReason.replace(/_/g, ' ')}
+                </span>
+                <span className="text-3xs text-muted">
+                  Reported by {selectedReport.reporterFullName} {selectedReport.reporterEmail ? `(${selectedReport.reporterEmail})` : ''}
+                </span>
+              </div>
+              {selectedReport.details && (
+                <div className="p-2 rounded bg-surface/80 border border-border/30 text-secondary text-2xs leading-relaxed mt-1">
+                  "{selectedReport.details}"
+                </div>
+              )}
+            </div>
+
+            {/* Moderation History if already actioned */}
+            {selectedReport.decisionNotes && (
+              <div className="p-3 bg-secondary/10 rounded-xl border border-border/20 text-2xs">
+                <span className="font-bold text-white block mb-0.5">Existing Moderation Notes:</span>
+                <p className="text-secondary italic">"{selectedReport.decisionNotes}"</p>
+                {selectedReport.resolvedByAdminName && (
+                  <span className="text-3xs text-muted block mt-1 font-mono">
+                    By Admin {selectedReport.resolvedByAdminName} on {selectedReport.resolvedAt ? new Date(selectedReport.resolvedAt).toLocaleString() : '—'}
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* Decision Action Selector */}
+            <div className="space-y-2 pt-2 border-t border-border/30">
+              <label className="label text-xs font-bold text-white">Select Moderation Action</label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <label
+                  className={`p-3 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
+                    moderationAction === 'DISMISS'
+                      ? 'border-secondary ring-2 ring-secondary/40 bg-secondary/20'
+                      : 'border-border/40 bg-surface/40 hover:border-border'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <input
+                      type="radio"
+                      name="moderationAction"
+                      value="DISMISS"
+                      checked={moderationAction === 'DISMISS'}
+                      onChange={() => setModerationAction('DISMISS')}
+                      className="radio radio-xs"
+                    />
+                    <strong className="text-white text-xs">Dismiss</strong>
+                  </div>
+                  <span className="text-3xs text-muted leading-tight">
+                    Keep review published. Report dismissed as invalid or policy-compliant.
+                  </span>
+                </label>
+
+                <label
+                  className={`p-3 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
+                    moderationAction === 'HIDE_REVIEW'
+                      ? 'border-warning ring-2 ring-warning/40 bg-warning/10'
+                      : 'border-border/40 bg-surface/40 hover:border-border'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <input
+                      type="radio"
+                      name="moderationAction"
+                      value="HIDE_REVIEW"
+                      checked={moderationAction === 'HIDE_REVIEW'}
+                      onChange={() => setModerationAction('HIDE_REVIEW')}
+                      className="radio radio-xs"
+                    />
+                    <strong className="text-warning text-xs">Hide Review</strong>
+                  </div>
+                  <span className="text-3xs text-muted leading-tight">
+                    Unpublish review from public listing while keeping DB record for audit.
+                  </span>
+                </label>
+
+                <label
+                  className={`p-3 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
+                    moderationAction === 'DELETE_REVIEW'
+                      ? 'border-danger ring-2 ring-danger/40 bg-danger/10'
+                      : 'border-border/40 bg-surface/40 hover:border-border'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <input
+                      type="radio"
+                      name="moderationAction"
+                      value="DELETE_REVIEW"
+                      checked={moderationAction === 'DELETE_REVIEW'}
+                      onChange={() => setModerationAction('DELETE_REVIEW')}
+                      className="radio radio-xs"
+                    />
+                    <strong className="text-danger text-xs">Delete Review</strong>
+                  </div>
+                  <span className="text-3xs text-muted leading-tight">
+                    Permanently soft-delete abusive, defamatory, or fraudulent review.
+                  </span>
+                </label>
+              </div>
+            </div>
+
+            {/* Decision Notes */}
+            <div>
+              <label className="label text-xs">
+                Administrative Decision Notes {moderationAction !== 'DISMISS' && <span className="text-danger">*</span>}
+              </label>
+              <textarea
+                className="input input-sm w-full h-20 text-xs"
+                placeholder={
+                  moderationAction === 'DISMISS'
+                    ? 'State reasons why the review is compliant with MeriGarage review guidelines (optional)...'
+                    : 'Mandatory justification for taking action against this review...'
+                }
+                value={moderationNotes}
+                onChange={(e) => setModerationNotes(e.target.value)}
+                required={moderationAction !== 'DISMISS'}
+              ></textarea>
+            </div>
+
+            {/* Footer Buttons */}
+            <div className="flex justify-end gap-2 pt-2 border-t border-border/30">
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => setModerationModalOpen(false)}
+                disabled={submittingModeration}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className={`btn btn-sm ${
+                  moderationAction === 'DELETE_REVIEW'
+                    ? 'btn-danger'
+                    : moderationAction === 'HIDE_REVIEW'
+                    ? 'btn-warning'
+                    : 'btn-primary'
+                }`}
+                disabled={submittingModeration}
+              >
+                {submittingModeration ? 'Executing Decision...' : `Confirm ${moderationAction.replace('_', ' ')}`}
+              </button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      {/* Admin Garage Review Poster Modal */}
+      {adminPosterGarage && (
+        <GarageReviewPosterModal
+          isOpen={!!adminPosterGarage}
+          onClose={() => setAdminPosterGarage(null)}
+          garage={adminPosterGarage}
+        />
+      )}
     </div>
   );
 };

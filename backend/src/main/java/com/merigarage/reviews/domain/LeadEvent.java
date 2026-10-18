@@ -29,6 +29,10 @@ public class LeadEvent {
     @JoinColumn(name = "user_id")
     private User user;
 
+    @Size(max = 150)
+    @Column(name = "customer_name", length = 150)
+    private String customerName;
+
     @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "event_type", nullable = false, length = 50)
@@ -128,6 +132,14 @@ public class LeadEvent {
 
     public void setUser(User user) {
         this.user = user;
+    }
+
+    public String getCustomerName() {
+        return customerName;
+    }
+
+    public void setCustomerName(String customerName) {
+        this.customerName = customerName;
     }
 
     public LeadEventType getEventType() {

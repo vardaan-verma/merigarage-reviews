@@ -15,8 +15,11 @@ import { ProfilePage } from './pages/ProfilePage';
 import { SubmitGaragePage } from './pages/SubmitGaragePage';
 import { MyClaimsPage } from './pages/MyClaimsPage';
 import { MyQuotesPage } from './pages/MyQuotesPage';
+import { MyReviewsPage } from './pages/MyReviewsPage';
+import { MyAskedQuotesPage } from './pages/MyAskedQuotesPage';
 import { OwnerDashboardPage } from './pages/OwnerDashboardPage';
 import { AdminDashboardPage } from './pages/AdminDashboardPage';
+import { QrRedirectPage } from './pages/QrRedirectPage';
 
 function NotFoundPage() {
   return (
@@ -47,12 +50,14 @@ export function App() {
               <Route path="/" element={<HomePage />} />
               <Route path="/garages" element={<GaragesPage />} />
               <Route path="/garages/:slug" element={<GarageDetailPage />} />
+              <Route path="/r/:slug" element={<QrRedirectPage />} />
+              <Route path="/qr/:slug" element={<QrRedirectPage />} />
               <Route path="/services" element={<ServicesPage />} />
               <Route path="/services/:serviceSlug" element={<ServicesPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
 
-              {/* Authenticated User Routes */}
+              {/* Authenticated Common Routes */}
               <Route
                 path="/profile"
                 element={
@@ -62,9 +67,27 @@ export function App() {
                 }
               />
               <Route
-                path="/submit-garage"
+                path="/my-reviews"
                 element={
                   <ProtectedRoute>
+                    <MyReviewsPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/my-asked-quotes"
+                element={
+                  <ProtectedRoute>
+                    <MyAskedQuotesPage />
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Garage Owner & Admin Routes */}
+              <Route
+                path="/submit-garage"
+                element={
+                  <ProtectedRoute requiredRole={['ROLE_GARAGE_OWNER', 'ROLE_ADMIN']}>
                     <SubmitGaragePage />
                   </ProtectedRoute>
                 }
@@ -72,7 +95,7 @@ export function App() {
               <Route
                 path="/my-claims"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute requiredRole={['ROLE_GARAGE_OWNER', 'ROLE_ADMIN']}>
                     <MyClaimsPage />
                   </ProtectedRoute>
                 }
@@ -80,7 +103,7 @@ export function App() {
               <Route
                 path="/my-quotes"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute requiredRole={['ROLE_GARAGE_OWNER', 'ROLE_ADMIN']}>
                     <MyQuotesPage />
                   </ProtectedRoute>
                 }

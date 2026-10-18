@@ -90,7 +90,8 @@ public class SecurityConfig {
                                 "/api/garages/*/reviews",
                                 "/api/garages/*/photos/*",
                                 "/api/services",
-                                "/api/services/*"
+                                "/api/services/*",
+                                "/api/users/*/photo"
                         ).permitAll()
                         .anyRequest().authenticated()
                 )

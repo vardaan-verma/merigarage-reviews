@@ -97,6 +97,7 @@ public class LeadTrackingService {
         event.setSessionId(sessionId);
         event.setEventType(request.eventType());
         event.setUser(currentUser); // null for anonymous visitors
+        event.setCustomerName(request.customerName() != null ? request.customerName().trim() : (currentUser != null ? currentUser.getFullName() : null));
         event.setState(request.state() != null ? request.state().trim() : null);
         event.setCity(request.city() != null ? request.city().trim() : null);
         event.setVehicleType(request.vehicleType() != null ? request.vehicleType().trim() : null);
@@ -166,5 +167,17 @@ public class LeadTrackingService {
                 eventType, cleanCity, cleanState, cleanSlug, cleanSource, hasUser, cleanSearch, fromDt, toDt, pageable
         );
         return page.map(LeadEventSummaryDto::fromEntity);
+    }
+
+    @Transactional
+    public int associateSessionWithUser(String sessionId, User user) {
+        if (sessionId == null || sessionId.isBlank() || user == null) {
+            return 0;
+        }
+        int count = leadEventRepository.associateSessionWithUser(sessionId.trim(), user);
+        if (count > 0) {
+            log.info("Associated {} anonymous lead events from session {} with user {}", count, sessionId, user.getId());
+        }
+        return count;
     }
 }

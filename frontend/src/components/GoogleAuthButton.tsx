@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import type { UserDto } from '../api/types';
+import type { RoleName, UserDto } from '../api/types';
 
 // Google Identity Services (GIS) type helper
 interface GoogleIdClient {
@@ -27,6 +27,7 @@ interface GoogleIdClient {
 interface GoogleAuthButtonProps {
   mode?: 'signin' | 'signup';
   roleTab?: 'customer' | 'garage';
+  role?: RoleName;
   onSuccess?: (user: UserDto) => void;
   onError?: (errorMessage: string) => void;
   disabled?: boolean;
@@ -36,6 +37,7 @@ interface GoogleAuthButtonProps {
 export const GoogleAuthButton: React.FC<GoogleAuthButtonProps> = ({
   mode = 'signin',
   roleTab = 'customer',
+  role,
   onSuccess,
   onError,
   disabled = false,
@@ -46,13 +48,20 @@ export const GoogleAuthButton: React.FC<GoogleAuthButtonProps> = ({
   const [loading, setLoading] = useState(false);
   const [showConfigModal, setShowConfigModal] = useState(false);
 
+  const roleTabRef = useRef(roleTab);
+  roleTabRef.current = roleTab;
+
+  const roleRef = useRef(role);
+  roleRef.current = role;
+
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
   const isGisConfigured = Boolean(clientId && clientId.trim().length > 5);
 
-  const handleCredentialResponse = async (credential: string) => {
+  const handleCredentialResponse = async (credential: string, portalOverride?: 'customer' | 'garage') => {
     try {
       setLoading(true);
-      const user = await loginWithGoogle(credential);
+      const effectivePortal = portalOverride || roleTabRef.current;
+      const user = await loginWithGoogle(credential, effectivePortal, roleRef.current);
       onSuccess?.(user);
     } catch (err: any) {
       const msg = err.message || 'Google authentication failed. Please try again.';
@@ -122,7 +131,7 @@ const getGoogleIdClient = (): GoogleIdClient | undefined => {
     return () => {
       isMounted = false;
     };
-  }, [clientId, isGisConfigured, mode]);
+  }, [clientId, isGisConfigured, mode, roleTab]);
 
   const handleCustomButtonClick = () => {
     if (disabled || loading) return;
@@ -140,10 +149,10 @@ const getGoogleIdClient = (): GoogleIdClient | undefined => {
     }
   };
 
-  const handleDemoSignIn = async (demoEmail: string, demoName: string) => {
+  const handleDemoSignIn = async (demoEmail: string, demoName: string, portalOverride?: 'customer' | 'garage') => {
     setShowConfigModal(false);
     const demoToken = `test_google_token:${demoEmail}:${demoName}`;
-    await handleCredentialResponse(demoToken);
+    await handleCredentialResponse(demoToken, portalOverride);
   };
 
   const buttonLabel =
@@ -285,7 +294,7 @@ const getGoogleIdClient = (): GoogleIdClient | undefined => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <button
                   type="button"
-                  onClick={() => handleDemoSignIn('google.motorist@merigarage.com', 'Rahul (Google Customer)')}
+                  onClick={() => handleDemoSignIn('google.motorist@merigarage.com', 'Rahul (Google Customer)', 'customer')}
                   className="btn btn-outline btn-sm flex items-center justify-center gap-1.5 py-2"
                 >
                   <span className="material-symbols-outlined text-sm text-primary">directions_car</span>
@@ -293,7 +302,7 @@ const getGoogleIdClient = (): GoogleIdClient | undefined => {
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleDemoSignIn('google.owner@merigarage.com', 'Vikram (Google Garage)')}
+                  onClick={() => handleDemoSignIn('google.owner@merigarage.com', 'Vikram (Google Garage)', 'garage')}
                   className="btn btn-outline btn-sm flex items-center justify-center gap-1.5 py-2"
                 >
                   <span className="material-symbols-outlined text-sm text-primary">construction</span>

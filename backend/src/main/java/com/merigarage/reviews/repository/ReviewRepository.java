@@ -25,7 +25,12 @@ public interface ReviewRepository extends JpaRepository<Review, Long> {
     @EntityGraph(attributePaths = {"user", "garage"})
     org.springframework.data.domain.Page<Review> findByGarageIdAndStatusAndIsDeletedFalse(Long garageId, ReviewStatus status, org.springframework.data.domain.Pageable pageable);
 
+    @EntityGraph(attributePaths = {"user", "garage"})
     List<Review> findByUserIdOrderByCreatedAtDesc(Long userId);
 
     long countByGarageIdAndIsDeletedFalse(Long garageId);
+
+    long countByStatusAndIsDeletedFalse(ReviewStatus status);
+
+    long countByIsDeletedFalse();
 }

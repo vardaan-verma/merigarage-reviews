@@ -11,6 +11,7 @@ import com.merigarage.reviews.domain.id.UserAdminPermissionId;
 import com.merigarage.reviews.domain.id.UserRoleId;
 import com.merigarage.reviews.exception.ForbiddenOperationException;
 import com.merigarage.reviews.exception.ResourceNotFoundException;
+import com.merigarage.reviews.exception.ValidationException;
 import com.merigarage.reviews.repository.AdminPermissionRepository;
 import com.merigarage.reviews.repository.RoleRepository;
 import com.merigarage.reviews.repository.UserAdminPermissionRepository;
@@ -53,11 +54,19 @@ public class UserAuthorizationService {
         Role role = roleRepository.findByName(roleName)
                 .orElseThrow(() -> new ResourceNotFoundException("Role not found: " + roleName));
 
+        // Enforce exactly one primary role per account: revoke other roles first
+        java.util.List<com.merigarage.reviews.domain.UserRole> currentRoles = userRoleRepository.findByUserId(targetUserId);
+        for (com.merigarage.reviews.domain.UserRole ur : currentRoles) {
+            if (ur.getRole().getName() != roleName) {
+                userRoleRepository.delete(ur);
+            }
+        }
+
         if (!userRoleRepository.existsByUserIdAndRoleId(targetUserId, role.getId())) {
             userRoleRepository.save(new UserRole(targetUser, role));
             if (auditTrailService != null) {
                 auditTrailService.recordAction(callerAdmin, "USER_ROLE_ASSIGNMENT", "USER", targetUserId,
-                        "GRANTED", "Role granted: " + roleName.name(), "{\"role\":\"" + roleName.name() + "\"}");
+                        "GRANTED", "Role granted (single primary role enforced): " + roleName.name(), "{\"role\":\"" + roleName.name() + "\"}");
             }
         }
     }
@@ -71,10 +80,55 @@ public class UserAuthorizationService {
         UserRoleId id = new UserRoleId(targetUserId, role.getId());
         if (userRoleRepository.existsById(id)) {
             userRoleRepository.deleteById(id);
+            // If user has no roles left, fallback to canonical default ROLE_USER so every account always has exactly one primary role
+            java.util.List<com.merigarage.reviews.domain.UserRole> remaining = userRoleRepository.findByUserId(targetUserId);
+            if (remaining.isEmpty() && roleName != RoleName.ROLE_USER) {
+                User targetUser = userRepository.findById(targetUserId).orElse(null);
+                Role userRole = roleRepository.findByName(RoleName.ROLE_USER).orElse(null);
+                if (targetUser != null && userRole != null) {
+                    userRoleRepository.save(new UserRole(targetUser, userRole));
+                }
+            }
             if (auditTrailService != null) {
                 auditTrailService.recordAction(callerAdmin, "USER_ROLE_REVOCATION", "USER", targetUserId,
                         "REVOKED", "Role revoked: " + roleName.name(), "{\"role\":\"" + roleName.name() + "\"}");
             }
+        }
+    }
+
+    public void switchPrimaryRole(Long targetUserId, RoleName newRole, String reason, User callerAdmin) {
+        verifyAdminCaller(callerAdmin);
+
+        if (newRole == null) {
+            throw new ValidationException("New primary role is required.");
+        }
+
+        User targetUser = userRepository.findById(targetUserId)
+                .orElseThrow(() -> new ResourceNotFoundException("Target user not found with id: " + targetUserId));
+
+        // Find all current roles of target user
+        java.util.List<com.merigarage.reviews.domain.UserRole> currentRoles = userRoleRepository.findByUserId(targetUserId);
+        String previousRolesStr = currentRoles.stream().map(ur -> ur.getRole().getName().name()).reduce((a, b) -> a + ", " + b).orElse("NONE");
+
+        // Revoke all other primary roles to enforce exactly one primary role per account
+        for (com.merigarage.reviews.domain.UserRole ur : currentRoles) {
+            if (ur.getRole().getName() != newRole) {
+                userRoleRepository.delete(ur);
+            }
+        }
+
+        // Grant target role if not already present
+        Role targetRoleEntity = roleRepository.findByName(newRole)
+                .orElseThrow(() -> new ResourceNotFoundException("Role not found: " + newRole));
+        if (!userRoleRepository.existsByUserIdAndRoleId(targetUserId, targetRoleEntity.getId())) {
+            userRoleRepository.save(new UserRole(targetUser, targetRoleEntity));
+        }
+
+        if (auditTrailService != null) {
+            String note = (reason != null && !reason.isBlank()) ? reason.trim() : "Primary role updated by administrator";
+            auditTrailService.recordAction(callerAdmin, "USER_PRIMARY_ROLE_CHANGE", "USER", targetUserId,
+                    "CHANGED", "Primary role switched from " + previousRolesStr + " to " + newRole.name() + ". Note: " + note,
+                    "{\"previousRoles\":\"" + previousRolesStr + "\",\"newRole\":\"" + newRole.name() + "\",\"reason\":\"" + note + "\"}");
         }
     }
 

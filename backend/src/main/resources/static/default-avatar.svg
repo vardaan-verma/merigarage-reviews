@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="100%" height="100%">
+  <defs>
+    <linearGradient id="avatarBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1E293B" />
+      <stop offset="100%" stop-color="#0F172A" />
+    </linearGradient>
+    <linearGradient id="avatarGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E11D48" stop-opacity="0.3" />
+      <stop offset="100%" stop-color="#002B49" stop-opacity="0.1" />
+    </linearGradient>
+  </defs>
+  <!-- Background circle -->
+  <circle cx="64" cy="64" r="62" fill="url(#avatarBg)" stroke="#334155" stroke-width="2" />
+  <circle cx="64" cy="64" r="58" fill="url(#avatarGlow)" />
+  <!-- Head -->
+  <circle cx="64" cy="48" r="20" fill="#94A3B8" />
+  <!-- Torso / Shoulders -->
+  <path d="M28,106 C28,86 44,78 64,78 C84,78 100,86 100,106 C100,108 98,110 96,110 L32,110 C30,110 28,108 28,106 Z" fill="#94A3B8" />
+</svg>

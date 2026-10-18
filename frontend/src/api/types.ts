@@ -39,6 +39,7 @@ export interface UserDto {
   email: string;
   fullName: string;
   phoneNumber?: string | null;
+  profilePhotoUrl?: string | null;
   status: UserStatus;
   roles: string[];
   permissions: string[];
@@ -177,6 +178,7 @@ export interface ReviewDto {
   garageId: number;
   authorUserId?: number;
   authorFullName: string;
+  authorProfilePhotoUrl?: string | null;
   ratingServiceQuality: number;
   ratingPricing: number;
   ratingTimeline: number;
@@ -384,6 +386,7 @@ export interface TrackLeadEventRequest {
   serviceSlug?: string;
   serviceName?: string;
   phoneNumber?: string;
+  customerName?: string;
   garageId?: number;
   garageSlug?: string;
   source?: string;
@@ -404,7 +407,9 @@ export interface LeadEventDto {
   eventId: string;
   sessionId: string;
   userId?: number | null;
+  userFullName?: string | null;
   userEmail?: string | null;
+  customerName?: string | null;
   eventType: string;
   state?: string | null;
   city?: string | null;
@@ -435,6 +440,7 @@ export interface AdminUserSummaryDto {
   fullName: string;
   email: string;
   phoneNumber?: string | null;
+  profilePhotoUrl?: string | null;
   roles: string[];
   permissions: string[];
   status: UserStatus;
@@ -491,6 +497,7 @@ export interface AdminGarageDetailDto {
   googleMapsUrl?: string | null;
   approvalStatus: 'PENDING' | 'APPROVED' | 'REJECTED' | 'SUSPENDED';
   isVerified: boolean;
+  coverPhotoId?: number | null;
   ownerId?: number | null;
   ownerName?: string | null;
   ownerEmail?: string | null;
@@ -549,6 +556,8 @@ export interface AdminOverviewMetricsDto {
   verifiedGarages: number;
   claimedGarages: number;
   totalReviews: number;
+  totalSubmittedReviews: number;
+  pendingReviewReports: number;
   totalLeads: number;
   homepageSearchSubmissions: number;
   quoteRequestsByStatus: Record<string, number>;
@@ -582,3 +591,106 @@ export interface AdminAuditLogDto {
   metadataJson?: string | null;
   createdAt: string;
 }
+
+export interface VehicleDto {
+  id: number;
+  userId: number;
+  vehicleType: string;
+  make: string;
+  model: string;
+  year?: number | null;
+  registrationNumber?: string | null;
+  fuelType?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateVehicleRequest {
+  vehicleType: string;
+  make: string;
+  model: string;
+  year?: number;
+  registrationNumber?: string;
+  fuelType?: string;
+}
+
+export interface UpdateVehicleRequest {
+  vehicleType: string;
+  make: string;
+  model: string;
+  year?: number;
+  registrationNumber?: string;
+  fuelType?: string;
+}
+
+export interface UpdateProfileRequest {
+  fullName: string;
+  phoneNumber?: string;
+  profilePhotoUrl?: string;
+  currentPassword?: string;
+  newPassword?: string;
+}
+
+export interface SwitchPrimaryRoleRequest {
+  targetRole: RoleName;
+  reason?: string;
+}
+
+export interface UserReviewDto {
+  id: number;
+  garageId: number;
+  garageName: string;
+  garageSlug?: string | null;
+  garageCity?: string | null;
+  overallRating: number;
+  ratingServiceQuality?: number | null;
+  ratingPricing?: number | null;
+  ratingTimeline?: number | null;
+  ratingCommunication?: number | null;
+  reviewTitle?: string | null;
+  reviewText: string;
+  status: string;
+  response?: ReviewResponseDto | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ReviewReportStatus = 'PENDING' | 'RESOLVED' | 'DISMISSED';
+
+export interface ReviewReportDto {
+  id: number;
+  reviewId: number;
+  garageId: number;
+  garageName: string;
+  garageCity?: string | null;
+  authorUserId?: number | null;
+  authorFullName: string;
+  authorEmail?: string | null;
+  overallRating?: number | null;
+  reviewTitle?: string | null;
+  reviewText: string;
+  reviewStatus: string;
+  reporterUserId?: number | null;
+  reporterFullName: string;
+  reporterEmail?: string | null;
+  reportReason: string;
+  details?: string | null;
+  status: ReviewReportStatus;
+  decisionNotes?: string | null;
+  resolvedByAdminId?: number | null;
+  resolvedByAdminName?: string | null;
+  resolvedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateReviewReportRequest {
+  reportReason: string;
+  details?: string;
+}
+
+export interface ModerateReviewReportRequest {
+  action: 'DISMISS' | 'HIDE_REVIEW' | 'DELETE_REVIEW';
+  decisionNotes?: string;
+}
+

@@ -1,6 +1,7 @@
 package com.merigarage.reviews.controller;
 
 import com.merigarage.reviews.domain.User;
+import com.merigarage.reviews.domain.enums.RoleName;
 import com.merigarage.reviews.domain.enums.UserStatus;
 import com.merigarage.reviews.repository.UserRepository;
 import com.merigarage.reviews.service.UserService;
@@ -315,6 +316,201 @@ class AuthControllerTest {
                 """;
 
         mockMvc.perform(post("/api/auth/google")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonBody))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void vehicleOwner_loginCustomerPortal_Succeeds() throws Exception {
+        String unique = UUID.randomUUID().toString().substring(0, 8);
+        String email = "cust." + unique + "@example.com";
+        String password = "Password123!";
+
+        userService.registerUser(new RegisterUserRequest(email, password, "Customer User", "9876543210", null, null, RoleName.ROLE_USER));
+
+        String loginJson = """
+                {
+                    "email": "%s",
+                    "password": "%s",
+                    "portal": "customer"
+                }
+                """.formatted(email, password);
+
+        MvcResult result = mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(loginJson))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value(email))
+                .andExpect(jsonPath("$.roles[0]").value("ROLE_USER"))
+                .andReturn();
+
+        MockHttpSession session = (MockHttpSession) result.getRequest().getSession(false);
+        assertThat(session).isNotNull();
+    }
+
+    @Test
+    void vehicleOwner_loginGaragePortal_RejectedWithExactWarningAndNoSession() throws Exception {
+        String unique = UUID.randomUUID().toString().substring(0, 8);
+        String email = "cust.garage." + unique + "@example.com";
+        String password = "Password123!";
+
+        userService.registerUser(new RegisterUserRequest(email, password, "Customer User", "9876543210", null, null, RoleName.ROLE_USER));
+
+        String loginJson = """
+                {
+                    "email": "%s",
+                    "password": "%s",
+                    "portal": "garage"
+                }
+                """.formatted(email, password);
+
+        MvcResult result = mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(loginJson))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("Forbidden"))
+                .andExpect(jsonPath("$.message").value("It seems like you are a customer. Please log in through the Customer Portal."))
+                .andReturn();
+
+        // Must leave user unauthenticated and not issue a new authenticated session
+        MockHttpSession session = (MockHttpSession) result.getRequest().getSession(false);
+        if (session != null) {
+            assertThat(session.getAttribute("SPRING_SECURITY_CONTEXT")).isNull();
+        }
+        mockMvc.perform(get("/api/auth/me").session(session != null ? session : new MockHttpSession()))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void garageOwner_loginGaragePortal_Succeeds() throws Exception {
+        String unique = UUID.randomUUID().toString().substring(0, 8);
+        String email = "garage." + unique + "@example.com";
+        String password = "Password123!";
+
+        userService.registerUser(new RegisterUserRequest(email, password, "Garage Owner", "9876543210", null, null, RoleName.ROLE_GARAGE_OWNER));
+
+        String loginJson = """
+                {
+                    "email": "%s",
+                    "password": "%s",
+                    "portal": "garage"
+                }
+                """.formatted(email, password);
+
+        MvcResult result = mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(loginJson))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value(email))
+                .andExpect(jsonPath("$.roles[0]").value("ROLE_GARAGE_OWNER"))
+                .andReturn();
+
+        MockHttpSession session = (MockHttpSession) result.getRequest().getSession(false);
+        assertThat(session).isNotNull();
+    }
+
+    @Test
+    void garageOwner_loginCustomerPortal_RejectedWithExactWarningAndNoSession() throws Exception {
+        String unique = UUID.randomUUID().toString().substring(0, 8);
+        String email = "garage.cust." + unique + "@example.com";
+        String password = "Password123!";
+
+        userService.registerUser(new RegisterUserRequest(email, password, "Garage Owner", "9876543210", null, null, RoleName.ROLE_GARAGE_OWNER));
+
+        String loginJson = """
+                {
+                    "email": "%s",
+                    "password": "%s",
+                    "portal": "customer"
+                }
+                """.formatted(email, password);
+
+        MvcResult result = mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(loginJson))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("Forbidden"))
+                .andExpect(jsonPath("$.message").value("It seems like you are a garage owner. Please log in using Garage Login."))
+                .andReturn();
+
+        // Must leave user unauthenticated and not issue a new authenticated session
+        MockHttpSession session = (MockHttpSession) result.getRequest().getSession(false);
+        if (session != null) {
+            assertThat(session.getAttribute("SPRING_SECURITY_CONTEXT")).isNull();
+        }
+        mockMvc.perform(get("/api/auth/me").session(session != null ? session : new MockHttpSession()))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void wrongPassword_OnWrongPortal_StillReturnsUnauthorized401WithoutLeakingRole() throws Exception {
+        String unique = UUID.randomUUID().toString().substring(0, 8);
+        String email = "cust.wrongpwd." + unique + "@example.com";
+        userService.registerUser(new RegisterUserRequest(email, "Password123!", "Customer User", "9876543210", null, null, RoleName.ROLE_USER));
+
+        // Submit wrong password to wrong portal
+        String loginJson = """
+                {
+                    "email": "%s",
+                    "password": "WrongPassword999!",
+                    "portal": "garage"
+                }
+                """.formatted(email);
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(loginJson))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value("Invalid email or password."));
+    }
+
+    @Test
+    void registration_DoesNotCreateAuthenticatedSession() throws Exception {
+        String unique = UUID.randomUUID().toString().substring(0, 8);
+        String email = "reg.nosession." + unique + "@example.com";
+        String jsonBody = """
+                {
+                    "email": "%s",
+                    "password": "Password123!",
+                    "fullName": "Unauthenticated Registrant",
+                    "phoneNumber": "9876543210",
+                    "role": "ROLE_USER"
+                }
+                """.formatted(email);
+
+        MvcResult result = mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonBody))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.email").value(email))
+                .andReturn();
+
+        // Verifies no authenticated session is created
+        MockHttpSession session = (MockHttpSession) result.getRequest().getSession(false);
+        if (session != null) {
+            assertThat(session.getAttribute("SPRING_SECURITY_CONTEXT")).isNull();
+        }
+
+        // Direct call to /api/auth/me with or without session must be unauthorized
+        mockMvc.perform(get("/api/auth/me").session(session != null ? session : new MockHttpSession()))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void registration_PublicAdminRole_RejectedWith400() throws Exception {
+        String unique = UUID.randomUUID().toString().substring(0, 8);
+        String email = "hacker.admin." + unique + "@example.com";
+        String jsonBody = """
+                {
+                    "email": "%s",
+                    "password": "Password123!",
+                    "fullName": "Malicious User",
+                    "role": "ROLE_ADMIN"
+                }
+                """.formatted(email);
+
+        mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonBody))
                 .andExpect(status().isBadRequest());

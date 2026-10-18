@@ -37,10 +37,29 @@ import type {
   ManageRoleRequest,
   ManagePermissionRequest,
   AdminAuditLogDto,
+  VehicleDto,
+  CreateVehicleRequest,
+  UpdateVehicleRequest,
+  UpdateProfileRequest,
+  SwitchPrimaryRoleRequest,
+  UserReviewDto,
+  RoleName,
+  ReviewReportStatus,
+  ReviewReportDto,
+  CreateReviewReportRequest,
+  ModerateReviewReportRequest,
 } from './types';
 
 export const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+
+function getStoredVisitorSessionId(): string | undefined {
+  try {
+    return sessionStorage.getItem('mg_session_id') || undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 export class ApiError extends Error {
   status: number;
@@ -187,16 +206,16 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 export const api = {
   // Auth
   auth: {
-    login: (email: string, password: string): Promise<UserDto> =>
+    login: (email: string, password: string, portal?: string, sessionId?: string): Promise<UserDto> =>
       request<UserDto>('/api/auth/login', {
         method: 'POST',
-        json: { email, password },
+        json: { email, password, portal, sessionId: sessionId || getStoredVisitorSessionId() },
       }),
 
-    googleAuth: (credential: string): Promise<UserDto> =>
+    googleAuth: (credential: string, portal?: string, sessionId?: string, role?: string): Promise<UserDto> =>
       request<UserDto>('/api/auth/google', {
         method: 'POST',
-        json: { credential },
+        json: { credential, portal, sessionId: sessionId || getStoredVisitorSessionId(), role },
       }),
 
     register: (data: {
@@ -206,10 +225,12 @@ export const api = {
       phoneNumber?: string;
       registrationSource?: string;
       consentStatus?: string;
+      role?: RoleName;
+      sessionId?: string;
     }): Promise<UserDto> =>
       request<UserDto>('/api/auth/register', {
         method: 'POST',
-        json: data,
+        json: { ...data, sessionId: data.sessionId || getStoredVisitorSessionId() },
       }),
 
     logout: (): Promise<{ message: string }> =>
@@ -223,6 +244,39 @@ export const api = {
 
     getProfile: (): Promise<UserDto> =>
       request<UserDto>('/api/users/profile', { method: 'GET' }),
+
+    updateProfile: (data: UpdateProfileRequest): Promise<UserDto> =>
+      request<UserDto>('/api/users/profile', {
+        method: 'PUT',
+        json: data,
+      }),
+
+    uploadProfilePhoto: (file: File): Promise<UserDto> => {
+      const fd = new FormData();
+      fd.append('file', file);
+      return request<UserDto>('/api/users/profile/photo', {
+        method: 'POST',
+        body: fd,
+      });
+    },
+
+    deleteProfilePhoto: (): Promise<UserDto> =>
+      request<UserDto>('/api/users/profile/photo', {
+        method: 'DELETE',
+      }),
+  },
+
+  // User Saved Vehicles
+  vehicles: {
+    list: (): Promise<VehicleDto[]> => request<VehicleDto[]>('/api/vehicles'),
+    create: (data: CreateVehicleRequest): Promise<VehicleDto> =>
+      request<VehicleDto>('/api/vehicles', { method: 'POST', json: data }),
+    update: (id: number, data: UpdateVehicleRequest): Promise<VehicleDto> =>
+      request<VehicleDto>(`/api/vehicles/${id}`, { method: 'PUT', json: data }),
+    delete: (id: number): Promise<void> =>
+      request<void>(`/api/vehicles/${id}`, { method: 'DELETE' }),
+    getHistory: (id: number): Promise<QuoteRequestDto[]> =>
+      request<QuoteRequestDto[]>(`/api/vehicles/${id}/history`),
   },
 
   // Public Garages
@@ -443,6 +497,19 @@ export const api = {
       request<ReviewResponseDto>(`/api/reviews/${reviewId}/response`, {
         method: 'POST',
         json: { responseText },
+      }),
+
+    getMyReviews: (): Promise<UserReviewDto[]> =>
+      request<UserReviewDto[]>('/api/reviews/my-reviews'),
+
+    report: (
+      garageId: number,
+      reviewId: number,
+      data: CreateReviewReportRequest
+    ): Promise<ReviewReportDto> =>
+      request<ReviewReportDto>(`/api/garages/${garageId}/reviews/${reviewId}/report`, {
+        method: 'POST',
+        json: data,
       }),
   },
 
@@ -729,6 +796,12 @@ export const api = {
         json: data,
       }),
 
+    switchPrimaryRole: (id: number, data: SwitchPrimaryRoleRequest): Promise<AdminUserDetailDto> =>
+      request<AdminUserDetailDto>(`/api/admin/users/${id}/primary-role`, {
+        method: 'POST',
+        json: data,
+      }),
+
     manageUserPermission: (id: number, data: ManagePermissionRequest): Promise<AdminUserDetailDto> =>
       request<AdminUserDetailDto>(`/api/admin/users/${id}/permissions`, {
         method: 'POST',
@@ -777,6 +850,31 @@ export const api = {
       document.body.removeChild(a);
       setTimeout(() => window.URL.revokeObjectURL(url), 10000);
     },
+
+    // Review Moderation Reports
+    getReviewReports: (params?: {
+      search?: string;
+      status?: ReviewReportStatus;
+      page?: number;
+      size?: number;
+    }): Promise<PagedResponse<ReviewReportDto>> => {
+      const sp = new URLSearchParams();
+      if (params?.search) sp.set('search', params.search);
+      if (params?.status) sp.set('status', params.status);
+      if (params?.page !== undefined) sp.set('page', String(params.page));
+      if (params?.size !== undefined) sp.set('size', String(params.size));
+      const qs = sp.toString();
+      return request<PagedResponse<ReviewReportDto>>(`/api/admin/reviews/reports${qs ? `?${qs}` : ''}`);
+    },
+
+    moderateReviewReport: (
+      id: number,
+      data: ModerateReviewReportRequest
+    ): Promise<ReviewReportDto> =>
+      request<ReviewReportDto>(`/api/admin/reviews/reports/${id}/moderate`, {
+        method: 'POST',
+        json: data,
+      }),
   },
 
   // Quote Requests

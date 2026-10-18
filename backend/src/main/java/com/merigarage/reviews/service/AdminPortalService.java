@@ -43,6 +43,9 @@ public class AdminPortalService {
     private final UserAuthorizationService userAuthorizationService;
     private final AdminAuditLogRepository auditLogRepository;
     private final ReviewRepository reviewRepository;
+    private final ReviewReportRepository reviewReportRepository;
+    private final ReviewReportService reviewReportService;
+    private final GaragePhotoRepository photoRepository;
 
     public AdminPortalService(UserRepository userRepository,
                               RoleRepository roleRepository,
@@ -60,7 +63,10 @@ public class AdminPortalService {
                               AuditTrailService auditTrailService,
                               UserAuthorizationService userAuthorizationService,
                               AdminAuditLogRepository auditLogRepository,
-                              ReviewRepository reviewRepository) {
+                              ReviewRepository reviewRepository,
+                              ReviewReportRepository reviewReportRepository,
+                              ReviewReportService reviewReportService,
+                              GaragePhotoRepository photoRepository) {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.userRoleRepository = userRoleRepository;
@@ -78,6 +84,9 @@ public class AdminPortalService {
         this.userAuthorizationService = userAuthorizationService;
         this.auditLogRepository = auditLogRepository;
         this.reviewRepository = reviewRepository;
+        this.reviewReportRepository = reviewReportRepository;
+        this.reviewReportService = reviewReportService;
+        this.photoRepository = photoRepository;
     }
 
     @Transactional(readOnly = true)
@@ -106,7 +115,10 @@ public class AdminPortalService {
         long rejectedGarages = garageRepository.countByApprovalStatus(GarageApprovalStatus.REJECTED);
         long verifiedGarages = garageRepository.countByIsVerifiedTrue();
         long claimedGarages = garageRepository.countByOwnerIsNotNull();
-        long totalReviews = reviewRepository.count();
+        // Phase 7: Explicitly calculate published non-deleted reviews across all garages
+        long totalReviews = reviewRepository.countByStatusAndIsDeletedFalse(ReviewStatus.PUBLISHED);
+        long totalSubmittedReviews = reviewRepository.countByIsDeletedFalse();
+        long pendingReviewReports = reviewReportRepository.countByStatus(ReviewReportStatus.PENDING);
 
         // 3. Leads metrics
         long totalLeads = leadEventRepository.count();
@@ -167,6 +179,8 @@ public class AdminPortalService {
                 verifiedGarages,
                 claimedGarages,
                 totalReviews,
+                totalSubmittedReviews,
+                pendingReviewReports,
                 totalLeads,
                 searchSubmissions,
                 quotesByStatus,
@@ -176,6 +190,20 @@ public class AdminPortalService {
                 recentQuotes,
                 serviceUsage
         );
+    }
+
+    @Transactional(readOnly = true)
+    public Page<ReviewReportDto> searchReviewReports(ReviewReportStatus status, String search, Pageable pageable) {
+        return reviewReportService.searchReports(status, search, pageable);
+    }
+
+    @Transactional(readOnly = true)
+    public ReviewReportDto getReviewReportById(Long id) {
+        return reviewReportService.getReportById(id);
+    }
+
+    public ReviewReportDto moderateReviewReport(Long id, ModerateReviewReportRequest request, User adminUser) {
+        return reviewReportService.moderateReport(id, request, adminUser);
     }
 
     @Transactional(readOnly = true)
@@ -454,6 +482,10 @@ public class AdminPortalService {
         }
     }
 
+    public void switchPrimaryRole(Long userId, SwitchPrimaryRoleRequest request, User callerAdmin) {
+        userAuthorizationService.switchPrimaryRole(userId, request.targetRole(), request.reason(), callerAdmin);
+    }
+
     public void manageUserPermission(Long userId, ManagePermissionRequest request, User callerAdmin) {
         if ("REVOKE".equalsIgnoreCase(request.action())) {
             userAuthorizationService.revokeAdminPermission(userId, request.permission(), callerAdmin);
@@ -515,7 +547,14 @@ public class AdminPortalService {
 
         int docsCount = documentRepository.findByGarageId(g.getId()).size();
 
-        return AdminGarageDetailDto.fromEntity(g, services, docsCount, audits);
+        Long coverPhotoId = photoRepository.findByGarageIdAndIsCoverTrueAndIsDeletedFalse(g.getId())
+                .map(GaragePhoto::getId)
+                .orElseGet(() -> photoRepository.findByGarageIdAndIsDeletedFalseOrderByDisplayOrderAsc(g.getId()).stream()
+                        .findFirst()
+                        .map(GaragePhoto::getId)
+                        .orElse(null));
+
+        return AdminGarageDetailDto.fromEntity(g, services, docsCount, audits, coverPhotoId);
     }
 
     private String csvEscape(String text) {

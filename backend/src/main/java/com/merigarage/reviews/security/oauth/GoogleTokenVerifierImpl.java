@@ -115,9 +115,10 @@ public class GoogleTokenVerifierImpl implements GoogleTokenVerifier {
     }
 
     private GoogleTokenPayload parseTestToken(String token) {
-        String[] parts = token.split(":", 3);
+        String[] parts = token.split(":", 4);
         String email = parts.length > 1 && !parts[1].isBlank() ? parts[1].trim() : "test.google.user@merigarage.com";
         String name = parts.length > 2 && !parts[2].isBlank() ? parts[2].trim() : "Demo Google User";
+        String picture = parts.length > 3 && !parts[3].isBlank() ? parts[3].trim() : null;
 
         log.info("Simulating Google OAuth verification with test token for email: {}", email);
         return new GoogleTokenPayload(
@@ -125,7 +126,7 @@ public class GoogleTokenVerifierImpl implements GoogleTokenVerifier {
                 email,
                 true,
                 name,
-                null,
+                picture,
                 configuredClientId,
                 "https://accounts.google.com"
         );
