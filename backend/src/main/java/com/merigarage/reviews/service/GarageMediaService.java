@@ -16,8 +16,11 @@ import com.merigarage.reviews.repository.GarageRepository;
 import com.merigarage.reviews.service.dto.DocumentUploadRequest;
 import com.merigarage.reviews.service.dto.GarageDocumentDto;
 import com.merigarage.reviews.service.dto.PhotoUploadRequest;
+import com.merigarage.reviews.service.storage.FileStorageService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -33,15 +36,18 @@ public class GarageMediaService {
     private final GarageDocumentRepository documentRepository;
     private final GarageRepository garageRepository;
     private final AuditTrailService auditTrailService;
+    private final FileStorageService fileStorageService;
 
     public GarageMediaService(GaragePhotoRepository photoRepository,
                               GarageDocumentRepository documentRepository,
                               GarageRepository garageRepository,
-                              AuditTrailService auditTrailService) {
+                              AuditTrailService auditTrailService,
+                              FileStorageService fileStorageService) {
         this.photoRepository = photoRepository;
         this.documentRepository = documentRepository;
         this.garageRepository = garageRepository;
         this.auditTrailService = auditTrailService;
+        this.fileStorageService = fileStorageService;
     }
 
     @Transactional
@@ -88,7 +94,20 @@ public class GarageMediaService {
         photo.setModerationStatus(ModerationStatus.APPROVED);
         photo.setIsDeleted(false);
 
-        return photoRepository.save(photo);
+        GaragePhoto saved = photoRepository.save(photo);
+
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCompletion(int status) {
+                    if (status != STATUS_COMMITTED) {
+                        fileStorageService.delete(request.storageKey());
+                    }
+                }
+            });
+        }
+
+        return saved;
     }
 
     @Transactional
@@ -186,7 +205,20 @@ public class GarageMediaService {
         doc.setFileSizeBytes(request.fileSizeBytes());
         doc.setVerificationStatus(DocumentVerificationStatus.PENDING);
 
-        return documentRepository.save(doc);
+        GarageDocument saved = documentRepository.save(doc);
+
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCompletion(int status) {
+                    if (status != STATUS_COMMITTED) {
+                        fileStorageService.delete(request.storageKey());
+                    }
+                }
+            });
+        }
+
+        return saved;
     }
 
     @Transactional

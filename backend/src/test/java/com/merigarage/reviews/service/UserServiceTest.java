@@ -84,4 +84,50 @@ class UserServiceTest {
                 .isInstanceOf(DuplicateResourceException.class)
                 .hasMessageContaining("User already exists with email");
     }
+
+    private byte[] createValidImageBytes() {
+        try {
+            java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(10, 10, java.awt.image.BufferedImage.TYPE_INT_RGB);
+            java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+            javax.imageio.ImageIO.write(img, "png", baos);
+            return baos.toByteArray();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Test
+    void uploadProfilePhoto_And_deleteProfilePhoto_Succeeds() {
+        String unique = UUID.randomUUID().toString().substring(0, 8);
+        User user = userService.registerUser(new RegisterUserRequest(
+                "photo." + unique + "@example.com",
+                "Password123!",
+                "Photo User",
+                null
+        ));
+
+        org.springframework.mock.web.MockMultipartFile file1 = new org.springframework.mock.web.MockMultipartFile(
+                "file", "pic1.png", "image/png", createValidImageBytes()
+        );
+
+        User updated1 = userService.uploadProfilePhoto(user.getId(), file1);
+        String firstKey = updated1.getProfilePhotoStorageKey();
+        assertThat(firstKey).isNotNull();
+        assertThat(firstKey).startsWith("users/" + user.getId() + "/profile/");
+        assertThat(updated1.getProfilePhotoUrl()).isEqualTo("/api/users/" + user.getId() + "/photo");
+        assertThat(updated1.getIsCustomPhoto()).isTrue();
+
+        // Replace photo with file2
+        org.springframework.mock.web.MockMultipartFile file2 = new org.springframework.mock.web.MockMultipartFile(
+                "file", "pic2.png", "image/png", createValidImageBytes()
+        );
+        User updated2 = userService.uploadProfilePhoto(user.getId(), file2);
+        assertThat(updated2.getProfilePhotoStorageKey()).isNotEqualTo(firstKey);
+
+        // Delete photo
+        User deleted = userService.deleteProfilePhoto(user.getId());
+        assertThat(deleted.getProfilePhotoStorageKey()).isNull();
+        assertThat(deleted.getProfilePhotoUrl()).isNull();
+        assertThat(deleted.getIsCustomPhoto()).isFalse();
+    }
 }

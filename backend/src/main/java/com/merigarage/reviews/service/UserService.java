@@ -18,6 +18,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
 import java.util.Locale;
@@ -270,10 +272,29 @@ public class UserService {
             user.setIsCustomPhoto(true);
             User saved = userRepository.save(user);
 
-            // Clean up previous photo if not referenced elsewhere
-            if (oldStorageKey != null && !oldStorageKey.equals(newStorageKey)) {
-                if (userRepository.countByProfilePhotoStorageKey(oldStorageKey) == 0) {
-                    fileStorageService.delete(oldStorageKey);
+            if (TransactionSynchronizationManager.isActualTransactionActive()) {
+                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        if (oldStorageKey != null && !oldStorageKey.equals(newStorageKey)) {
+                            if (userRepository.countByProfilePhotoStorageKey(oldStorageKey) == 0) {
+                                fileStorageService.delete(oldStorageKey);
+                            }
+                        }
+                    }
+
+                    @Override
+                    public void afterCompletion(int status) {
+                        if (status != STATUS_COMMITTED) {
+                            fileStorageService.delete(newStorageKey);
+                        }
+                    }
+                });
+            } else {
+                if (oldStorageKey != null && !oldStorageKey.equals(newStorageKey)) {
+                    if (userRepository.countByProfilePhotoStorageKey(oldStorageKey) == 0) {
+                        fileStorageService.delete(oldStorageKey);
+                    }
                 }
             }
             return saved;
@@ -296,8 +317,21 @@ public class UserService {
         user.setIsCustomPhoto(false);
         User saved = userRepository.save(user);
 
-        if (oldStorageKey != null && userRepository.countByProfilePhotoStorageKey(oldStorageKey) == 0) {
-            fileStorageService.delete(oldStorageKey);
+        if (oldStorageKey != null) {
+            if (TransactionSynchronizationManager.isActualTransactionActive()) {
+                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        if (userRepository.countByProfilePhotoStorageKey(oldStorageKey) == 0) {
+                            fileStorageService.delete(oldStorageKey);
+                        }
+                    }
+                });
+            } else {
+                if (userRepository.countByProfilePhotoStorageKey(oldStorageKey) == 0) {
+                    fileStorageService.delete(oldStorageKey);
+                }
+            }
         }
         return saved;
     }

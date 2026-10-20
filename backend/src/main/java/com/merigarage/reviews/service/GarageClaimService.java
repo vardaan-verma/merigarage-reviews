@@ -140,30 +140,54 @@ public class GarageClaimService {
 
         // Store verification documents linked directly to this claim
         List<GarageDocument> savedDocs = new ArrayList<>();
+        List<String> newlyStoredKeys = new ArrayList<>();
         if (files != null && !files.isEmpty()) {
-            for (int i = 0; i < files.size(); i++) {
-                MultipartFile file = files.get(i);
-                if (file == null || file.isEmpty()) continue;
+            try {
+                for (int i = 0; i < files.size(); i++) {
+                    MultipartFile file = files.get(i);
+                    if (file == null || file.isEmpty()) continue;
 
-                DocumentType docType = (documentTypes != null && i < documentTypes.size() && documentTypes.get(i) != null)
-                        ? documentTypes.get(i)
-                        : DocumentType.OWNERSHIP_PROOF;
+                    DocumentType docType = (documentTypes != null && i < documentTypes.size() && documentTypes.get(i) != null)
+                            ? documentTypes.get(i)
+                            : DocumentType.OWNERSHIP_PROOF;
 
-                String storageKey = fileStorageService.storeDocument(file, garageId);
+                    String storageKey = fileStorageService.storeDocument(file, garageId);
+                    newlyStoredKeys.add(storageKey);
 
-                GarageDocument doc = new GarageDocument();
-                doc.setGarage(garage);
-                doc.setClaim(savedClaim);
-                doc.setUploadedBy(claimantUser);
-                doc.setDocumentType(docType);
-                doc.setStorageKey(storageKey);
-                doc.setOriginalFileName(file.getOriginalFilename() != null ? file.getOriginalFilename().trim() : "document");
-                doc.setContentType(file.getContentType() != null ? file.getContentType().trim() : "application/octet-stream");
-                doc.setFileSizeBytes(file.getSize());
-                doc.setVerificationStatus(DocumentVerificationStatus.PENDING);
+                    GarageDocument doc = new GarageDocument();
+                    doc.setGarage(garage);
+                    doc.setClaim(savedClaim);
+                    doc.setUploadedBy(claimantUser);
+                    doc.setDocumentType(docType);
+                    doc.setStorageKey(storageKey);
+                    doc.setOriginalFileName(file.getOriginalFilename() != null ? file.getOriginalFilename().trim() : "document");
+                    doc.setContentType(file.getContentType() != null ? file.getContentType().trim() : "application/octet-stream");
+                    doc.setFileSizeBytes(file.getSize());
+                    doc.setVerificationStatus(DocumentVerificationStatus.PENDING);
 
-                GarageDocument persistedDoc = documentRepository.save(doc);
-                savedDocs.add(persistedDoc);
+                    GarageDocument persistedDoc = documentRepository.save(doc);
+                    savedDocs.add(persistedDoc);
+                }
+            } catch (Exception ex) {
+                for (String key : newlyStoredKeys) {
+                    fileStorageService.delete(key);
+                }
+                throw ex;
+            }
+
+            if (org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()) {
+                org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                        new org.springframework.transaction.support.TransactionSynchronization() {
+                            @Override
+                            public void afterCompletion(int status) {
+                                if (status != STATUS_COMMITTED) {
+                                    for (String key : newlyStoredKeys) {
+                                        fileStorageService.delete(key);
+                                    }
+                                }
+                            }
+                        }
+                );
             }
         }
         savedClaim.setDocuments(savedDocs);

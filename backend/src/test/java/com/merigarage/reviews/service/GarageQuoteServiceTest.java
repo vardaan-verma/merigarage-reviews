@@ -219,4 +219,129 @@ class GarageQuoteServiceTest {
 
         assertThat(result.status()).isEqualTo(QuoteRequestStatus.ACCEPTED);
     }
+
+    @Test
+    void createQuoteRequest_With50CharRegistrationNumber_Succeeds() {
+        when(garageRepository.findById(1L)).thenReturn(Optional.of(garage));
+        when(garageServiceRepository.findByGarageIdAndIsAvailableTrue(1L)).thenReturn(List.of(garageService1));
+        when(quoteRequestRepository.existsByReferenceNumber(any())).thenReturn(false);
+        when(quoteRequestRepository.save(any(GarageQuoteRequest.class))).thenAnswer(inv -> {
+            GarageQuoteRequest r = inv.getArgument(0);
+            r.setId(51L);
+            return r;
+        });
+
+        // Exactly 50 chars
+        String longRegNumber = "IND-DL01AB1234-SPECIAL-CUSTOM-REGISTRATION-SERIES-";
+        assertThat(longRegNumber.length()).isEqualTo(50);
+
+        CreateQuoteRequest req = new CreateQuoteRequest(
+                1L,
+                List.of(10),
+                "CAR",
+                "Tata",
+                "Nexon",
+                2022,
+                "PETROL",
+                longRegNumber,
+                30000,
+                "Brake noise",
+                null,
+                "9876543210",
+                "customer@example.com",
+                null
+        );
+
+        QuoteRequestDto result = quoteService.createQuoteRequest(req, customer);
+
+        assertThat(result).isNotNull();
+        verify(quoteRequestRepository).save(argThat(r -> r.getRegistrationNumber().equals(longRegNumber)));
+    }
+
+    @Test
+    void createQuoteRequest_BeanValidation_EnforcesConstraints() {
+        jakarta.validation.Validator validator = jakarta.validation.Validation
+                .buildDefaultValidatorFactory()
+                .getValidator();
+
+        // 1. Valid request has no violations
+        CreateQuoteRequest validReq = new CreateQuoteRequest(
+                1L,
+                List.of(10),
+                "CAR",
+                "Tata",
+                "Nexon",
+                2022,
+                "PETROL",
+                "DL01AB1234",
+                30000,
+                "Engine inspection",
+                null,
+                "9876543210",
+                "user@example.com",
+                null
+        );
+        assertThat(validator.validate(validReq)).isEmpty();
+
+        // 2. Registration number > 50 chars produces violation
+        CreateQuoteRequest regTooLong = new CreateQuoteRequest(
+                1L,
+                List.of(10),
+                "CAR",
+                "Tata",
+                "Nexon",
+                2022,
+                "PETROL",
+                "A".repeat(51),
+                30000,
+                "Engine inspection",
+                null,
+                "9876543210",
+                "user@example.com",
+                null
+        );
+        Set<jakarta.validation.ConstraintViolation<CreateQuoteRequest>> regViolations = validator.validate(regTooLong);
+        assertThat(regViolations).isNotEmpty();
+        assertThat(regViolations).anyMatch(v -> v.getPropertyPath().toString().equals("registrationNumber"));
+
+        // 3. Make > 100 chars produces violation
+        CreateQuoteRequest makeTooLong = new CreateQuoteRequest(
+                1L,
+                List.of(10),
+                "CAR",
+                "M".repeat(101),
+                "Model",
+                2022,
+                null,
+                null,
+                null,
+                "Engine inspection",
+                null,
+                "9876543210",
+                null,
+                null
+        );
+        Set<jakarta.validation.ConstraintViolation<CreateQuoteRequest>> makeViolations = validator.validate(makeTooLong);
+        assertThat(makeViolations).isNotEmpty();
+        assertThat(makeViolations).anyMatch(v -> v.getPropertyPath().toString().equals("vehicleMake"));
+
+        // 4. Empty services produces violation
+        CreateQuoteRequest emptyServices = new CreateQuoteRequest(
+                1L,
+                List.of(),
+                "CAR",
+                "Tata",
+                "Nexon",
+                null,
+                null,
+                null,
+                null,
+                "Engine inspection",
+                null,
+                "9876543210",
+                null,
+                null
+        );
+        assertThat(validator.validate(emptyServices)).isNotEmpty();
+    }
 }

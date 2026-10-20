@@ -227,7 +227,13 @@ public class GarageManagementController {
                 file.getSize()
         );
 
-        GarageDocument doc = mediaService.uploadDocument(id, docRequest, currentUser);
+        GarageDocument doc;
+        try {
+            doc = mediaService.uploadDocument(id, docRequest, currentUser);
+        } catch (Exception ex) {
+            fileStorageService.delete(storageKey);
+            throw ex;
+        }
         return ResponseEntity.status(HttpStatus.CREATED).body(GarageDocumentDto.fromEntity(doc));
     }
 

@@ -55,8 +55,8 @@ public class GarageQuoteRequest {
     @Column(name = "fuel_type", length = 50)
     private String fuelType;
 
-    @Size(max = 30)
-    @Column(name = "registration_number", length = 30)
+    @Size(max = 50)
+    @Column(name = "registration_number", length = 50)
     private String registrationNumber;
 
     @Column(name = "odometer_reading")

@@ -97,9 +97,12 @@ public class LocalFileStorageService implements FileStorageService {
 
     @Override
     public Resource loadAsResource(String storageKey) {
+        if (storageKey == null || storageKey.isBlank()) {
+            throw new ResourceNotFoundException("Storage key cannot be empty.");
+        }
         try {
             Path file = this.rootLocation.resolve(storageKey).normalize();
-            if (!file.startsWith(this.rootLocation)) {
+            if (!file.startsWith(this.rootLocation) || file.equals(this.rootLocation)) {
                 throw new ValidationException("Invalid storage key path traversal attempt.");
             }
             Resource resource = new UrlResource(file.toUri());
@@ -115,9 +118,12 @@ public class LocalFileStorageService implements FileStorageService {
 
     @Override
     public void delete(String storageKey) {
+        if (storageKey == null || storageKey.isBlank()) {
+            return;
+        }
         try {
             Path file = this.rootLocation.resolve(storageKey).normalize();
-            if (file.startsWith(this.rootLocation)) {
+            if (file.startsWith(this.rootLocation) && !file.equals(this.rootLocation)) {
                 Files.deleteIfExists(file);
             }
         } catch (IOException ignored) {
@@ -141,7 +147,7 @@ public class LocalFileStorageService implements FileStorageService {
 
             return relativeSubDir + "/" + uniqueName;
         } catch (IOException e) {
-            throw new ValidationException("Failed to store file: " + e.getMessage());
+            throw new com.merigarage.reviews.exception.FileStorageException("Failed to store file: " + e.getMessage(), e);
         }
     }
 
@@ -179,7 +185,7 @@ public class LocalFileStorageService implements FileStorageService {
 
             return relativeSubDir + "/" + uniqueName;
         } catch (IOException e) {
-            throw new ValidationException("Failed to store file: " + e.getMessage());
+            throw new com.merigarage.reviews.exception.FileStorageException("Failed to store file: " + e.getMessage(), e);
         }
     }
 

@@ -84,4 +84,58 @@ class LocalFileStorageServiceTest {
                 .isInstanceOf(ValidationException.class)
                 .hasMessageContaining("cannot be empty");
     }
+
+    @Test
+    void delete_NullOrBlankKey_NoOpAndSafe() {
+        // Must not throw or delete root storage directory
+        storageService.delete(null);
+        storageService.delete("");
+        storageService.delete("   ");
+        assertThat(tempDir.toFile().exists()).isTrue();
+    }
+
+    private byte[] createValidImageBytes() {
+        try {
+            java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(10, 10, java.awt.image.BufferedImage.TYPE_INT_RGB);
+            java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+            javax.imageio.ImageIO.write(img, "png", baos);
+            return baos.toByteArray();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Test
+    void storeUserProfilePhoto_ValidFile_StoresInUserDirectory() {
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "avatar.png", "image/png", createValidImageBytes()
+        );
+
+        String storageKey = storageService.storeUserProfilePhoto(file, 99L);
+
+        assertThat(storageKey).startsWith("users/99/profile/");
+        assertThat(storageKey).endsWith(".png");
+    }
+
+    @Test
+    void storeDocument_ValidFile_StoresInDocumentDirectory() {
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "business_license.pdf", "application/pdf", "pdf bytes".getBytes()
+        );
+
+        String storageKey = storageService.storeDocument(file, 42L);
+
+        assertThat(storageKey).startsWith("garages/42/documents/");
+        assertThat(storageKey).endsWith(".pdf");
+    }
+
+    @Test
+    void loadAsResource_NullOrBlankOrTraversal_ThrowsException() {
+        assertThatThrownBy(() -> storageService.loadAsResource(null))
+                .isInstanceOf(com.merigarage.reviews.exception.ResourceNotFoundException.class);
+        assertThatThrownBy(() -> storageService.loadAsResource(""))
+                .isInstanceOf(com.merigarage.reviews.exception.ResourceNotFoundException.class);
+        assertThatThrownBy(() -> storageService.loadAsResource("../secret.txt"))
+                .isInstanceOf(ValidationException.class);
+    }
 }
