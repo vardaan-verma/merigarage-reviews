@@ -93,6 +93,15 @@ public class SecurityConfig {
                                 "/api/services/*",
                                 "/api/users/*/photo"
                         ).permitAll()
+                        .requestMatchers(org.springframework.http.HttpMethod.HEAD,
+                                "/api/garages",
+                                "/api/garages/*",
+                                "/api/garages/*/reviews",
+                                "/api/garages/*/photos/*",
+                                "/api/services",
+                                "/api/services/*",
+                                "/api/users/*/photo"
+                        ).permitAll()
                         .anyRequest().authenticated()
                 )
                 .logout(logout -> logout

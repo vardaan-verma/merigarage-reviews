@@ -24,6 +24,7 @@ import { MyAskedQuotesPage } from './pages/MyAskedQuotesPage';
 import { OwnerDashboardPage } from './pages/OwnerDashboardPage';
 import { AdminDashboardPage } from './pages/AdminDashboardPage';
 import { QrRedirectPage } from './pages/QrRedirectPage';
+import { FaqPage } from './pages/FaqPage';
 
 function NotFoundPage() {
   return (
@@ -58,6 +59,7 @@ export function App() {
                 <Route path="/" element={<HomePage />} />
                 <Route path="/garages" element={<GaragesPage />} />
                 <Route path="/garages/:slug" element={<GarageDetailPage />} />
+                <Route path="/faq" element={<FaqPage />} />
                 <Route path="/r/:slug" element={<QrRedirectPage />} />
                 <Route path="/qr/:slug" element={<QrRedirectPage />} />
                 <Route path="/services" element={<ServicesPage />} />

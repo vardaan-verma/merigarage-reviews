@@ -11,6 +11,10 @@ import java.util.List;
 @Repository
 public interface ReviewRepository extends JpaRepository<Review, Long> {
 
+    @Override
+    @EntityGraph(attributePaths = {"user", "garage"})
+    java.util.Optional<Review> findById(Long id);
+
     List<Review> findByGarageIdAndUserIdOrderByCreatedAtDesc(Long garageId, Long userId);
 
     boolean existsByGarageIdAndUserId(Long garageId, Long userId);

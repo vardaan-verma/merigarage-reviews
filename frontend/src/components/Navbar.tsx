@@ -96,6 +96,13 @@ export const Navbar: React.FC = () => {
             >
               Services
             </NavLink>
+            <NavLink
+              to="/faq"
+              className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              FAQs
+            </NavLink>
 
             {isAuthenticated && (
               <>

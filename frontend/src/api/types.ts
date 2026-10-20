@@ -653,6 +653,9 @@ export interface UserReviewDto {
   response?: ReviewResponseDto | null;
   createdAt: string;
   updatedAt: string;
+  authorUserId?: number | null;
+  authorFullName?: string | null;
+  authorProfilePhotoUrl?: string | null;
 }
 
 export type ReviewReportStatus = 'PENDING' | 'RESOLVED' | 'DISMISSED';

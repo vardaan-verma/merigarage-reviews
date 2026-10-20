@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<meta content="web_standard" name="shell-type"/>
+<title>Frequently Asked Questions | Meri Garage Automotive OS</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&amp;family=Space+Grotesk:wght@500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "garage-red": "#E31B23",
+            "garage-blue": "#2563EB",
+            "obsidian": "#080B11",
+            "obsidian-card": "#0F131D",
+            "obsidian-subtle": "#161B26",
+            "obsidian-border": "rgba(255, 255, 255, 0.08)"
+          },
+          fontFamily: {
+            headline: ["Space Grotesk", "sans-serif"],
+            body: ["Manrope", "sans-serif"]
+          }
+        }
+      }
+    };
+  </script>
+<style>
+    @layer base {
+      html, body {
+        margin: 0;
+        padding: 0;
+        background-color: #080B11;
+        color: #FFFFFF;
+      }
+      body {
+        overscroll-behavior: none;
+      }
+    }
+    ::-webkit-scrollbar { display: none; }
+
+    /* Interactive animations */
+    .faq-item .faq-answer {
+      max-height: 0;
+      opacity: 0;
+      overflow: hidden;
+      transition: max-height 0.45s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.35s ease, margin-top 0.35s ease;
+    }
+    .faq-item.active .faq-answer {
+      max-height: 520px;
+      opacity: 1;
+      margin-top: 1.5rem;
+    }
+    .faq-item.active .indicator-line {
+      background-color: #E31B23;
+      transform: scaleX(1);
+    }
+    .faq-item.active .icon-plus {
+      transform: rotate(45deg);
+      color: #E31B23;
+    }
+
+    /* Memphis tool micro-animation triggers */
+    .faq-item:hover .tool-wrench {
+      transform: rotate(18deg) scale(1.1);
+    }
+    .faq-item:hover .tool-gear {
+      transform: rotate(60deg);
+    }
+    .faq-item.active .tool-wrench {
+      transform: rotate(28deg) scale(1.15);
+      stroke: #E31B23;
+    }
+    .faq-item.active .tool-gear {
+      transform: rotate(120deg);
+      stroke: #2563EB;
+    }
+    .faq-item.active .tool-spark {
+      animation: sparkPulse 1.2s ease-in-out infinite;
+    }
+    @keyframes sparkPulse {
+      0%, 100% { opacity: 0.3; transform: scale(0.95); }
+      50% { opacity: 1; transform: scale(1.1); filter: drop-shadow(0 0 6px #2563EB); }
+    }
+    @keyframes gearSpinSlow {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    .bg-gear-spin {
+      animation: gearSpinSlow 90s linear infinite;
+    }
+    .bg-gear-spin-rev {
+      animation: gearSpinSlow 120s linear infinite reverse;
+    }
+  </style>
+</head>
+<body class="bg-obsidian font-body text-white antialiased selection:bg-garage-red selection:text-white min-h-screen relative overflow-x-hidden">
+<!-- ========================================================================= -->
+<!-- FLOATING CORPORATE MEMPHIS WIREFRAME & DUOTONE VECTOR BACKGROUND GRAPHICS -->
+<!-- ========================================================================= -->
+<div class="pointer-events-none fixed inset-0 z-0 overflow-hidden select-none opacity-20">
+<!-- Memphis Giant Gear Top Right -->
+<svg class="absolute -top-32 -right-32 w-[650px] h-[650px] text-garage-blue stroke-current bg-gear-spin" fill="none" stroke-width="1.2" viewbox="0 0 200 200">
+<path d="M100 25 L106 38 L120 35 L121 49 L135 52 L131 66 L143 74 L134 85 L144 96 L131 104 L136 118 L122 121 L121 135 L107 132 L101 146 L92 138 L80 147 L78 133 L64 135 L68 121 L55 114 L64 103 L54 92 L67 84 L62 70 L76 67 L77 53 L91 56 Z" stroke-dasharray="4 2"></path>
+<circle cx="100" cy="100" opacity="0.3" r="38" stroke="#FFFFFF" stroke-width="1.5"></circle>
+<circle cx="100" cy="100" opacity="0.6" r="16" stroke="#E31B23" stroke-width="2"></circle>
+</svg>
+<!-- Memphis Giant Spanner Diagonal Left Center -->
+<svg class="absolute top-[28%] -left-28 w-[580px] h-[580px] text-garage-red opacity-15 rotate-[-25deg]" fill="none" stroke="currentColor" stroke-width="1.4" viewbox="0 0 240 240">
+<!-- Memphis oversized spanner silhouette -->
+<path d="M50 180 C 40 190, 20 210, 30 220 C 40 230, 60 210, 70 200 L 160 110 C 170 120, 190 120, 200 110 C 210 100, 210 80, 200 70 L 180 90 L 165 75 L 185 55 C 175 45, 155 45, 145 55 C 135 65, 135 85, 145 95 Z" stroke-dasharray="6 3"></path>
+<circle cx="50" cy="200" fill="#2563EB" opacity="0.4" r="8"></circle>
+</svg>
+<!-- Giant Memphis Noodle-Limb Mechanic Outline (Right Mid-Bottom) -->
+<svg class="absolute top-[52%] -right-16 w-[620px] h-[620px] text-white opacity-10" fill="none" stroke="currentColor" stroke-width="1.3" viewbox="0 0 400 400">
+<!-- Memphis round torso, curvy noodle arm holding wrench, stylized cap -->
+<path d="M 280 80 C 270 65, 295 50, 310 65 C 320 75, 305 90, 280 80 Z" stroke="#2563EB" stroke-width="2"></path>
+<path d="M 280 95 Q 260 140 250 210 Q 240 280 230 360" stroke-linecap="round" stroke-width="2.5"></path>
+<path d="M 265 140 C 230 150, 180 130, 140 180 C 110 220, 130 270, 110 320" stroke="#E31B23" stroke-linecap="round" stroke-width="3"></path>
+<!-- Giant wrench held in hand -->
+<path d="M 105 320 L 70 345 L 85 360 L 120 335 Z" stroke="#FFFFFF" stroke-width="2"></path>
+<circle cx="310" cy="65" r="14" stroke="#E31B23" stroke-width="1.5"></circle>
+</svg>
+<!-- Spark Plug Wireframe Vector (Bottom Left) -->
+<svg class="absolute -bottom-24 left-1/4 w-[420px] h-[420px] text-garage-blue opacity-15 rotate-45" fill="none" stroke="currentColor" stroke-width="1.2" viewbox="0 0 160 160">
+<rect height="24" rx="2" stroke="#FFFFFF" width="12" x="74" y="10"></rect>
+<path d="M68 34 L92 34 L88 64 L72 64 Z"></path>
+<rect height="30" rx="3" stroke="#E31B23" width="36" x="62" y="64"></rect>
+<path d="M70 94 L90 94 L86 130 L74 130 Z" stroke-dasharray="3 2"></path>
+<path d="M80 130 L80 148 L72 148" stroke-width="2"></path>
+</svg>
+<!-- Subtle background radial glows matching palette -->
+<div class="absolute top-1/4 left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-garage-blue/10 blur-[160px] pointer-events-none rounded-full"></div>
+<div class="absolute bottom-1/3 left-10 w-[600px] h-[400px] bg-garage-red/8 blur-[160px] pointer-events-none rounded-full"></div>
+</div>
+<!-- ========================================================================= -->
+<!-- HEADER: MINIMAL BOLD NAVIGATION (Using Official Brand Assets)              -->
+<!-- ========================================================================= -->
+<header class="fixed top-0 left-0 right-0 w-full z-50 bg-obsidian/85 backdrop-blur-md border-b border-white/[0.06]">
+<div class="max-w-7xl mx-auto px-6 lg:px-12 h-24 flex items-center justify-between">
+<!-- Brand Logos: Cog Icon + Full Wordmark -->
+<a class="flex items-center gap-3.5 group" href="#">
+<img alt="Meri Garage Cog Icon" class="h-10 w-10 object-contain group-hover:rotate-45 transition-transform duration-500" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDwpZFgyw544fX2HZDccgZcabs720JIUG5Iv9S8mM-mKRRkd9ebB8ewGdO9marA3ls4bpoFtfwe5ZcRMZMX4j3KCdUl2Vk4k0UxmLC3V0sCnAUVhbQ7LFmJonyRhGtS3Jlit8nROgNnEZ8BPSxqj5mjEwhis7Mc4aIrhgkj3fZ1-EeKWBDeqIxy4_xWlbn1zGH1wj31Yb3_Yh943eHSbVdTCva2u5yvnWIPE5j9QlIgcUncweVNFWihsnBAKDxt4EYiWg"/>
+<img alt="Meri Garage Wordmark" class="h-7 w-auto object-contain brightness-105" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAMyeMxwN8y3L2YKug-MGGEC5lrpzWmVe24HkPqXqFMqCjqnz-HO_zDVT1rVXVDV-f6j17OcDxl4ExssHw3a86jSmSzacqjM80perk9B_0c_FDCrou9zV0Iea2t3ghLR-hl9Y6TGA-7hB96FFMvsvKURc6_90_0B9vcAJ0yzt5-KfeBx9hwqYBypzD1cQqZf4FgGZ9DIzsmU5GE0Jeqt2-kn1fK-5tltZ75N9pwOLxyOojk55V9Jlu_1ncHMxi6LfyApg"/>
+</a>
+<!-- Desktop Minimal Nav Links -->
+<nav class="hidden lg:flex items-center gap-10 font-headline text-sm tracking-wide text-white/70">
+<a class="hover:text-white transition-colors" data-path="garage-management-os" href="#">Management OS</a>
+<a class="hover:text-white transition-colors" data-path="find-garages-and-reviews" href="#">Find Garages</a>
+<a class="hover:text-white transition-colors" data-path="pricing" href="#">Pricing</a>
+<a class="text-white font-bold relative py-1" data-path="resources-and-faq" href="#">
+          FAQ &amp; Resources
+          <span class="absolute bottom-0 left-0 w-full h-[2px] bg-garage-red"></span>
+</a>
+<a class="hover:text-white transition-colors" data-path="partner-network" href="#">Partners</a>
+</nav>
+<!-- Action Button Group -->
+<div class="flex items-center gap-4">
+<a class="hidden sm:inline-flex font-headline text-xs uppercase tracking-widest text-white/80 hover:text-white px-4 py-2.5 transition-colors" data-path="login-portal" href="#">
+          Portal Login
+        </a>
+<a class="inline-flex items-center font-headline text-xs font-bold uppercase tracking-wider bg-garage-red text-white px-6 py-3 rounded-none hover:bg-white hover:text-obsidian transition-all duration-200 shadow-[0_0_24px_rgba(227,27,35,0.4)]" data-path="register-garage" href="#">
+          Register Garage
+        </a>
+</div>
+</div>
+</header>
+<!-- ========================================================================= -->
+<!-- MAIN FAQ SECTION: MINIMAL BOLD EXPANSIVE CANVAS                            -->
+<!-- ========================================================================= -->
+<main class="relative z-10 pt-36 pb-32">
+<div class="max-w-7xl mx-auto px-6 lg:px-12">
+<!-- HERO INTRO: Massive Typographic Scale & Negative Space -->
+<section class="max-w-4xl mb-24">
+<div class="inline-flex items-center gap-3 mb-6">
+<div class="w-2.5 h-2.5 bg-garage-red rounded-full"></div>
+<span class="font-headline text-xs font-bold uppercase tracking-[0.25em] text-garage-blue">Automotive OS Knowledge Vault</span>
+</div>
+<h1 class="font-headline text-5xl sm:text-7xl lg:text-8xl font-extrabold tracking-tight leading-[1.02] text-white uppercase mb-8">
+          Clear Answers.<br/>
+<span class="text-transparent bg-clip-text bg-gradient-to-r from-white via-white/80 to-white/40">Zero Friction.</span>
+</h1>
+<p class="font-body text-lg sm:text-xl text-white/60 font-normal leading-relaxed max-w-2xl">
+          Everything technicians, multi-bay fleet managers, and vehicle owners need to operate at peak precision. Engineered for clarity, verified by telemetry.
+        </p>
+<!-- Minimal High-Impact Quick Filters -->
+<div class="mt-12 flex flex-wrap items-center gap-3" id="categoryFilters">
+<button class="filter-pill active font-headline text-xs font-bold uppercase tracking-wider px-6 py-3 border border-garage-red bg-garage-red text-white transition-all duration-200" data-cat="all">
+            All Questions (06)
+          </button>
+<button class="filter-pill font-headline text-xs font-bold uppercase tracking-wider px-6 py-3 border border-white/10 bg-transparent text-white/70 hover:text-white hover:border-white/30 transition-all duration-200" data-cat="management-os">
+            Garage OS (02)
+          </button>
+<button class="filter-pill font-headline text-xs font-bold uppercase tracking-wider px-6 py-3 border border-white/10 bg-transparent text-white/70 hover:text-white hover:border-white/30 transition-all duration-200" data-cat="reviews-ratings">
+            Trust &amp; Reviews (02)
+          </button>
+<button class="filter-pill font-headline text-xs font-bold uppercase tracking-wider px-6 py-3 border border-white/10 bg-transparent text-white/70 hover:text-white hover:border-white/30 transition-all duration-200" data-cat="billing-parts">
+            Billing &amp; Parts (02)
+          </button>
+</div>
+</section>
+<!-- ===================================================================== -->
+<!-- EXPANSIVE ACCORDION STREAM: WIDE HORIZONTAL DIVIDERS WITH MICRO-ANIMS -->
+<!-- ===================================================================== -->
+<section class="border-t border-white/15 divide-y divide-white/10" id="faqAccordionList">
+<!-- QUESTION 01 -->
+<div class="faq-item group py-10 transition-colors duration-300 hover:bg-white/[0.015]" data-category="management-os">
+<div class="cursor-pointer faq-header flex items-start justify-between gap-6 sm:gap-12 select-none">
+<div class="flex items-start gap-6 sm:gap-10">
+<!-- Sequential Index with Memphis accent -->
+<span class="font-headline text-sm sm:text-base font-bold text-white/30 group-hover:text-garage-red transition-colors pt-2">
+                01/
+              </span>
+<div class="flex flex-col">
+<h2 class="font-headline text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-white group-hover:text-white leading-snug">
+                  How does Meri Garage help workshop owners manage daily repairs and job cards?
+                </h2>
+<div class="flex items-center gap-4 mt-3">
+<span class="font-headline text-[10px] font-bold tracking-widest uppercase text-garage-blue">Job Card OS</span>
+<span class="text-white/20 text-xs">•</span>
+<span class="font-body text-xs text-white/40">Multi-tier digital intake</span>
+</div>
+</div>
+</div>
+<!-- Memphis Interactive Micro-Animation Tool Cluster -->
+<div class="flex items-center gap-4 shrink-0 pt-2">
+<!-- Mini Memphis SVG Tool that animates on hover/active -->
+<div class="w-10 h-10 rounded-full border border-white/10 flex items-center justify-center group-hover:border-white/30 transition-colors bg-obsidian-subtle/50">
+<svg class="w-5 h-5 tool-wrench text-white/70 transition-transform duration-300" fill="none" stroke="currentColor" stroke-width="1.8" viewbox="0 0 24 24">
+<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
+</svg>
+</div>
+<!-- Sleek Plus / Cross Toggle -->
+<div class="w-10 h-10 flex items-center justify-center font-headline text-2xl text-white/50 group-hover:text-white transition-all icon-plus">
+                +
+              </div>
+</div>
+</div>
+<!-- Slide-out Clean High-Contrast Answer -->
+<div class="faq-answer pl-0 sm:pl-16">
+<div class="max-w-3xl pt-2">
+<p class="font-body text-base sm:text-lg text-white/80 leading-relaxed mb-6 font-normal">
+                Meri Garage replaces messy clipboards and delayed approvals with an instantaneous multi-tier digital job card runtime. Technicians intake vehicles in seconds using camera scanning to log vehicle body scratch matrices, record fuel levels, and stream initial OBD diagnostics directly to the repair queue.
+              </p>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4 my-6">
+<div class="p-5 border border-white/10 bg-obsidian-card">
+<div class="flex items-center gap-2 mb-2 text-garage-red">
+<span class="material-symbols-outlined text-lg">notifications_active</span>
+<span class="font-headline text-xs font-bold uppercase tracking-wider text-white">Automated Milestone Alerts</span>
+</div>
+<p class="font-body text-xs text-white/60 leading-normal">
+                    Instant WhatsApp &amp; SMS notifications broadcast photo approvals and cost updates directly to car owners.
+                  </p>
+</div>
+<div class="p-5 border border-white/10 bg-obsidian-card">
+<div class="flex items-center gap-2 mb-2 text-garage-blue">
+<span class="material-symbols-outlined text-lg">precision_manufacturing</span>
+<span class="font-headline text-xs font-bold uppercase tracking-wider text-white">Bay Telemetry &amp; Labor Balance</span>
+</div>
+<p class="font-body text-xs text-white/60 leading-normal">
+                    Real-time workload metrics monitor bay idle duration, labor efficiency, and diagnostic turnarounds.
+                  </p>
+</div>
+</div>
+<div class="flex items-center gap-6 pt-2">
+<a class="inline-flex items-center gap-2 font-headline text-xs font-bold uppercase tracking-wider text-garage-red hover:text-white transition-colors" href="#">
+<span>Explore Garage OS Workflow</span>
+<span class="material-symbols-outlined text-sm">arrow_forward</span>
+</a>
+<span class="text-white/20">|</span>
+<span class="font-headline text-[10px] tracking-widest uppercase text-white/40">MODULE: JOB-CARD-v3.4</span>
+</div>
+</div>
+</div>
+</div>
+<!-- QUESTION 02 -->
+<div class="faq-item group py-10 transition-colors duration-300 hover:bg-white/[0.015]" data-category="reviews-ratings">
+<div class="cursor-pointer faq-header flex items-start justify-between gap-6 sm:gap-12 select-none">
+<div class="flex items-start gap-6 sm:gap-10">
+<span class="font-headline text-sm sm:text-base font-bold text-white/30 group-hover:text-garage-red transition-colors pt-2">
+                02/
+              </span>
+<div class="flex flex-col">
+<h2 class="font-headline text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-white group-hover:text-white leading-snug">
+                  How are customer reviews verified to eliminate fake ratings?
+                </h2>
+<div class="flex items-center gap-4 mt-3">
+<span class="font-headline text-[10px] font-bold tracking-widest uppercase text-garage-red">Meri Trust Protocol</span>
+<span class="text-white/20 text-xs">•</span>
+<span class="font-body text-xs text-white/40">Anti-fraud verification</span>
+</div>
+</div>
+</div>
+<div class="flex items-center gap-4 shrink-0 pt-2">
+<div class="w-10 h-10 rounded-full border border-white/10 flex items-center justify-center group-hover:border-white/30 transition-colors bg-obsidian-subtle/50">
+<svg class="w-5 h-5 tool-spark text-white/70 transition-transform duration-300" fill="none" stroke="currentColor" stroke-width="1.8" viewbox="0 0 24 24">
+<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+</svg>
+</div>
+<div class="w-10 h-10 flex items-center justify-center font-headline text-2xl text-white/50 group-hover:text-white transition-all icon-plus">
+                +
+              </div>
+</div>
+</div>
+<div class="faq-answer pl-0 sm:pl-16">
+<div class="max-w-3xl pt-2">
+<p class="font-body text-base sm:text-lg text-white/80 leading-relaxed mb-6 font-normal">
+                Unlike open review networks manipulated by bots and paid ratings, Meri Garage enforces an unalterable three-tier verification handshake before any workshop score or feedback appears on the verified badge.
+              </p>
+<ul class="space-y-3 font-body text-sm text-white/70 mb-6 border-l-2 border-garage-red pl-4">
+<li><strong class="text-white font-semibold">1. Settled GST Invoicing:</strong> Rating invitations are generated solely after a registered vehicle repair invoice has been digitally cleared in the OS.</li>
+<li><strong class="text-white font-semibold">2. Cryptographic OTP Match:</strong> Vehicle owners confirm identity through SMS OTP linked directly to the intake mobile credentials.</li>
+<li><strong class="text-white font-semibold">3. GPS Geo-Fencing:</strong> Bay intake coordinates validate actual workshop presence, permanently eliminating bot-generated false feedback.</li>
+</ul>
+<div class="flex items-center gap-6 pt-2">
+<a class="inline-flex items-center gap-2 font-headline text-xs font-bold uppercase tracking-wider text-garage-red hover:text-white transition-colors" href="#">
+<span>View Review Integrity Standard</span>
+<span class="material-symbols-outlined text-sm">arrow_forward</span>
+</a>
+<span class="text-white/20">|</span>
+<span class="font-headline text-[10px] tracking-widest uppercase text-white/40">SYSTEM: ZERO-FRAUD™</span>
+</div>
+</div>
+</div>
+</div>
+<!-- QUESTION 03 -->
+<div class="faq-item group py-10 transition-colors duration-300 hover:bg-white/[0.015]" data-category="billing-parts">
+<div class="cursor-pointer faq-header flex items-start justify-between gap-6 sm:gap-12 select-none">
+<div class="flex items-start gap-6 sm:gap-10">
+<span class="font-headline text-sm sm:text-base font-bold text-white/30 group-hover:text-garage-red transition-colors pt-2">
+                03/
+              </span>
+<div class="flex flex-col">
+<h2 class="font-headline text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-white group-hover:text-white leading-snug">
+                  Can multi-bay auto workshops sync parts inventory and vendor billing?
+                </h2>
+<div class="flex items-center gap-4 mt-3">
+<span class="font-headline text-[10px] font-bold tracking-widest uppercase text-garage-blue">Parts Telemetry</span>
+<span class="text-white/20 text-xs">•</span>
+<span class="font-body text-xs text-white/40">OEM / OES live integration</span>
+</div>
+</div>
+</div>
+<div class="flex items-center gap-4 shrink-0 pt-2">
+<div class="w-10 h-10 rounded-full border border-white/10 flex items-center justify-center group-hover:border-white/30 transition-colors bg-obsidian-subtle/50">
+<svg class="w-5 h-5 tool-gear text-white/70 transition-transform duration-500" fill="none" stroke="currentColor" stroke-width="1.8" viewbox="0 0 24 24">
+<circle cx="12" cy="12" r="3"></circle>
+<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+</svg>
+</div>
+<div class="w-10 h-10 flex items-center justify-center font-headline text-2xl text-white/50 group-hover:text-white transition-all icon-plus">
+                +
+              </div>
+</div>
+</div>
+<div class="faq-answer pl-0 sm:pl-16">
+<div class="max-w-3xl pt-2">
+<p class="font-body text-base sm:text-lg text-white/80 leading-relaxed mb-4 font-normal">
+                Yes. High-frequency consumable items—engine oils, spark plugs, ceramic brake pads, and oil filters—synchronize directly with active jobs. As parts are assigned to a vehicle, stock is decremented immediately across all workshop stations.
+              </p>
+<p class="font-body text-sm text-white/60 leading-relaxed mb-6">
+                Automated low-threshold procurement generates direct purchase orders to partnered OEM parts suppliers. Billing includes automated dual-tax HSN invoice printing, GST compliance reconciliations, and split payments.
+              </p>
+<div class="flex items-center gap-6 pt-2">
+<a class="inline-flex items-center gap-2 font-headline text-xs font-bold uppercase tracking-wider text-garage-red hover:text-white transition-colors" href="#">
+<span>Explore Inventory Modules</span>
+<span class="material-symbols-outlined text-sm">arrow_forward</span>
+</a>
+<span class="text-white/20">|</span>
+<span class="font-headline text-[10px] tracking-widest uppercase text-white/40">TAX ENGINE: GST HSN v2.1</span>
+</div>
+</div>
+</div>
+</div>
+<!-- QUESTION 04 -->
+<div class="faq-item group py-10 transition-colors duration-300 hover:bg-white/[0.015]" data-category="management-os">
+<div class="cursor-pointer faq-header flex items-start justify-between gap-6 sm:gap-12 select-none">
+<div class="flex items-start gap-6 sm:gap-10">
+<span class="font-headline text-sm sm:text-base font-bold text-white/30 group-hover:text-garage-red transition-colors pt-2">
+                04/
+              </span>
+<div class="flex flex-col">
+<h2 class="font-headline text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-white group-hover:text-white leading-snug">
+                  What hardware or devices are required to run Meri Garage OS?
+                </h2>
+<div class="flex items-center gap-4 mt-3">
+<span class="font-headline text-[10px] font-bold tracking-widest uppercase text-garage-red">Zero Server Footprint</span>
+<span class="text-white/20 text-xs">•</span>
+<span class="font-body text-xs text-white/40">Cloud web responsive</span>
+</div>
+</div>
+</div>
+<div class="flex items-center gap-4 shrink-0 pt-2">
+<div class="w-10 h-10 rounded-full border border-white/10 flex items-center justify-center group-hover:border-white/30 transition-colors bg-obsidian-subtle/50">
+<svg class="w-5 h-5 tool-wrench text-white/70 transition-transform duration-300" fill="none" stroke="currentColor" stroke-width="1.8" viewbox="0 0 24 24">
+<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
+</svg>
+</div>
+<div class="w-10 h-10 flex items-center justify-center font-headline text-2xl text-white/50 group-hover:text-white transition-all icon-plus">
+                +
+              </div>
+</div>
+</div>
+<div class="faq-answer pl-0 sm:pl-16">
+<div class="max-w-3xl pt-2">
+<p class="font-body text-base sm:text-lg text-white/80 leading-relaxed mb-6 font-normal">
+                Zero dedicated servers or expensive proprietary hardware required. Meri Garage is an ultra-fast, lightweight web application configured to execute smoothly on any standard tablet (Android/iPad), technician smartphone, workshop POS counter, or front-desk PC.
+              </p>
+<div class="p-4 border border-white/10 bg-obsidian-card font-body text-sm text-white/70 mb-4">
+<span class="text-white font-semibold block mb-1">Offline Resilience Mode:</span>
+                Intake mechanics can continue creating inspection job cards and logging photos during temporary internet drops; data automatically syncs once connection is restored.
+              </div>
+<div class="flex items-center gap-6 pt-2">
+<a class="inline-flex items-center gap-2 font-headline text-xs font-bold uppercase tracking-wider text-garage-red hover:text-white transition-colors" href="#">
+<span>Hardware Compatibility Specs</span>
+<span class="material-symbols-outlined text-sm">arrow_forward</span>
+</a>
+<span class="text-white/20">|</span>
+<span class="font-headline text-[10px] tracking-widest uppercase text-white/40">RUNTIME: WEB PWA</span>
+</div>
+</div>
+</div>
+</div>
+<!-- QUESTION 05 -->
+<div class="faq-item group py-10 transition-colors duration-300 hover:bg-white/[0.015]" data-category="reviews-ratings">
+<div class="cursor-pointer faq-header flex items-start justify-between gap-6 sm:gap-12 select-none">
+<div class="flex items-start gap-6 sm:gap-10">
+<span class="font-headline text-sm sm:text-base font-bold text-white/30 group-hover:text-garage-red transition-colors pt-2">
+                05/
+              </span>
+<div class="flex flex-col">
+<h2 class="font-headline text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-white group-hover:text-white leading-snug">
+                  How do customers find and book appointments at rated garages near them?
+                </h2>
+<div class="flex items-center gap-4 mt-3">
+<span class="font-headline text-[10px] font-bold tracking-widest uppercase text-garage-blue">GPS Directory</span>
+<span class="text-white/20 text-xs">•</span>
+<span class="font-body text-xs text-white/40">Diagnostic specialization lookup</span>
+</div>
+</div>
+</div>
+<div class="flex items-center gap-4 shrink-0 pt-2">
+<div class="w-10 h-10 rounded-full border border-white/10 flex items-center justify-center group-hover:border-white/30 transition-colors bg-obsidian-subtle/50">
+<svg class="w-5 h-5 tool-spark text-white/70 transition-transform duration-300" fill="none" stroke="currentColor" stroke-width="1.8" viewbox="0 0 24 24">
+<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+</svg>
+</div>
+<div class="w-10 h-10 flex items-center justify-center font-headline text-2xl text-white/50 group-hover:text-white transition-all icon-plus">
+                +
+              </div>
+</div>
+</div>
+<div class="faq-answer pl-0 sm:pl-16">
+<div class="max-w-3xl pt-2">
+<p class="font-body text-base sm:text-lg text-white/80 leading-relaxed mb-4 font-normal">
+                Vehicle owners search our verified directory filtered by accurate GPS proximity, vehicle make specialization (German luxury, Japanese performance, domestic diesel, or EV battery diagnosis), and authentic star ratings.
+              </p>
+<p class="font-body text-sm text-white/60 leading-relaxed mb-6">
+                Owners receive upfront estimates, view real-time workshop cleanliness certifications, inspect verified photos of hydraulic bays, and select open appointment slots directly confirmed into the workshop master schedule.
+              </p>
+<div class="flex items-center gap-6 pt-2">
+<a class="inline-flex items-center gap-2 font-headline text-xs font-bold uppercase tracking-wider text-garage-red hover:text-white transition-colors" href="#">
+<span>Browse Garages Near You</span>
+<span class="material-symbols-outlined text-sm">arrow_forward</span>
+</a>
+<span class="text-white/20">|</span>
+<span class="font-headline text-[10px] tracking-widest uppercase text-white/40">NETWORK: 1,840+ HUBS</span>
+</div>
+</div>
+</div>
+</div>
+<!-- QUESTION 06 -->
+<div class="faq-item group py-10 transition-colors duration-300 hover:bg-white/[0.015]" data-category="billing-parts">
+<div class="cursor-pointer faq-header flex items-start justify-between gap-6 sm:gap-12 select-none">
+<div class="flex items-start gap-6 sm:gap-10">
+<span class="font-headline text-sm sm:text-base font-bold text-white/30 group-hover:text-garage-red transition-colors pt-2">
+                06/
+              </span>
+<div class="flex flex-col">
+<h2 class="font-headline text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-white group-hover:text-white leading-snug">
+                  Is customer vehicle repair history securely stored and exportable?
+                </h2>
+<div class="flex items-center gap-4 mt-3">
+<span class="font-headline text-[10px] font-bold tracking-widest uppercase text-garage-red">Vehicle Passport</span>
+<span class="text-white/20 text-xs">•</span>
+<span class="font-body text-xs text-white/40">256-bit encrypted VIN tracking</span>
+</div>
+</div>
+</div>
+<div class="flex items-center gap-4 shrink-0 pt-2">
+<div class="w-10 h-10 rounded-full border border-white/10 flex items-center justify-center group-hover:border-white/30 transition-colors bg-obsidian-subtle/50">
+<svg class="w-5 h-5 tool-gear text-white/70 transition-transform duration-500" fill="none" stroke="currentColor" stroke-width="1.8" viewbox="0 0 24 24">
+<circle cx="12" cy="12" r="3"></circle>
+<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+</svg>
+</div>
+<div class="w-10 h-10 flex items-center justify-center font-headline text-2xl text-white/50 group-hover:text-white transition-all icon-plus">
+                +
+              </div>
+</div>
+</div>
+<div class="faq-answer pl-0 sm:pl-16">
+<div class="max-w-3xl pt-2">
+<p class="font-body text-base sm:text-lg text-white/80 leading-relaxed mb-4 font-normal">
+                Yes. Every spark plug replacement, brake rotor overhaul, fluids flush, and diagnostic check is permanently attached to the chassis VIN. 
+              </p>
+<p class="font-body text-sm text-white/60 leading-relaxed mb-6">
+                Car owners can export cryptographically validated digital maintenance passports in PDF format with one click—preserving resale value and stopping duplicate diagnoses across independent workshops.
+              </p>
+<div class="flex items-center gap-6 pt-2">
+<a class="inline-flex items-center gap-2 font-headline text-xs font-bold uppercase tracking-wider text-garage-red hover:text-white transition-colors" href="#">
+<span>Sample Digital Passport</span>
+<span class="material-symbols-outlined text-sm">arrow_forward</span>
+</a>
+<span class="text-white/20">|</span>
+<span class="font-headline text-[10px] tracking-widest uppercase text-white/40">SECURITY: SHA-256 VIN LEDGER</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- ===================================================================== -->
+<!-- BOTTOM CALLOUT: MINIMAL BOLD DIRECT CONTACT BAR                        -->
+<!-- ===================================================================== -->
+<section class="mt-28 p-8 sm:p-12 border border-white/15 bg-obsidian-card relative overflow-hidden">
+<!-- Accent Memphis stripe -->
+<div class="absolute top-0 left-0 w-2 h-full bg-garage-red"></div>
+<div class="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-8">
+<div class="max-w-2xl pl-2">
+<span class="font-headline text-xs font-bold uppercase tracking-widest text-garage-blue mb-2 block">
+              Still Need Operational Assistance?
+            </span>
+<h3 class="font-headline text-2xl sm:text-4xl font-bold tracking-tight text-white mb-3">
+              Talk directly with an automotive diagnostic architect.
+            </h3>
+<p class="font-body text-sm sm:text-base text-white/60">
+              Average response time under 15 minutes. We assist with shop software migration, OBD hardware integration, and multi-bay deployment.
+            </p>
+</div>
+<div class="flex flex-wrap items-center gap-4 shrink-0">
+<a class="font-headline text-xs font-bold uppercase tracking-wider bg-garage-red text-white px-8 py-4 hover:bg-white hover:text-obsidian transition-all shadow-[0_0_20px_rgba(227,27,35,0.35)]" href="#">
+              Live Diagnostic Desk
+            </a>
+<a class="font-headline text-xs font-bold uppercase tracking-wider border border-white/20 text-white px-8 py-4 hover:border-white transition-all" href="#">
+              Schedule 1-on-1 Walkthrough
+            </a>
+</div>
+</div>
+</section>
+</div>
+</main>
+<!-- ========================================================================= -->
+<!-- FOOTER: SOPHISTICATED, MINIMAL & PROFESSIONAL (With Brand Assets)         -->
+<!-- ========================================================================= -->
+<footer class="border-t border-white/10 bg-obsidian pt-20 pb-16 relative z-10">
+<div class="max-w-7xl mx-auto px-6 lg:px-12">
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-12 mb-16">
+<!-- Logo & Mission Column -->
+<div class="lg:col-span-2 flex flex-col gap-6">
+<div class="flex items-center gap-3.5">
+<img alt="Meri Garage Cog Icon" class="h-9 w-9 object-contain" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDwpZFgyw544fX2HZDccgZcabs720JIUG5Iv9S8mM-mKRRkd9ebB8ewGdO9marA3ls4bpoFtfwe5ZcRMZMX4j3KCdUl2Vk4k0UxmLC3V0sCnAUVhbQ7LFmJonyRhGtS3Jlit8nROgNnEZ8BPSxqj5mjEwhis7Mc4aIrhgkj3fZ1-EeKWBDeqIxy4_xWlbn1zGH1wj31Yb3_Yh943eHSbVdTCva2u5yvnWIPE5j9QlIgcUncweVNFWihsnBAKDxt4EYiWg"/>
+<img alt="Meri Garage Wordmark" class="h-6 w-auto object-contain brightness-105" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAMyeMxwN8y3L2YKug-MGGEC5lrpzWmVe24HkPqXqFMqCjqnz-HO_zDVT1rVXVDV-f6j17OcDxl4ExssHw3a86jSmSzacqjM80perk9B_0c_FDCrou9zV0Iea2t3ghLR-hl9Y6TGA-7hB96FFMvsvKURc6_90_0B9vcAJ0yzt5-KfeBx9hwqYBypzD1cQqZf4FgGZ9DIzsmU5GE0Jeqt2-kn1fK-5tltZ75N9pwOLxyOojk55V9Jlu_1ncHMxi6LfyApg"/>
+</div>
+<p class="font-body text-sm text-white/60 max-w-sm leading-relaxed">
+            Enterprise automotive workshop management OS, transparent customer tracking, and India's trusted verified automotive diagnostic and repair network.
+          </p>
+<div class="flex items-center gap-3 pt-2">
+<span class="w-2 h-2 rounded-full bg-garage-red animate-ping"></span>
+<span class="font-headline text-[11px] font-bold tracking-widest uppercase text-white/50">SYSTEM OPERATIONAL • TELEMETRY v4.2</span>
+</div>
+</div>
+<!-- Links Col 1 -->
+<div class="flex flex-col gap-4">
+<span class="font-headline text-xs font-bold tracking-widest uppercase text-white">Platform</span>
+<nav class="flex flex-col gap-2.5 font-body text-sm text-white/60">
+<a class="hover:text-white transition-colors" data-path="garage-management-os" href="#">Workshop OS</a>
+<a class="hover:text-white transition-colors" data-path="garage-management-os" href="#">Job Card Engine</a>
+<a class="hover:text-white transition-colors" data-path="garage-management-os" href="#">Inventory Telemetry</a>
+<a class="hover:text-white transition-colors" data-path="find-garages-and-reviews" href="#">Verified Ratings</a>
+</nav>
+</div>
+<!-- Links Col 2 -->
+<div class="flex flex-col gap-4">
+<span class="font-headline text-xs font-bold tracking-widest uppercase text-white">Community</span>
+<nav class="flex flex-col gap-2.5 font-body text-sm text-white/60">
+<a class="hover:text-white transition-colors" data-path="partner-network" href="#">Master Tech Network</a>
+<a class="hover:text-white transition-colors" data-path="partner-network" href="#">OEM Spare Alliances</a>
+<a class="hover:text-white transition-colors" data-path="pricing" href="#">Pricing Plans</a>
+<a class="hover:text-white transition-colors" data-path="register-garage" href="#">Register Garage</a>
+</nav>
+</div>
+<!-- Links Col 3 -->
+<div class="flex flex-col gap-4">
+<span class="font-headline text-xs font-bold tracking-widest uppercase text-white">Trust &amp; Legal</span>
+<nav class="flex flex-col gap-2.5 font-body text-sm text-white/60">
+<a class="hover:text-white transition-colors" data-path="resources-and-faq" href="#">Knowledge Base &amp; FAQ</a>
+<a class="hover:text-white transition-colors" data-path="resources-and-faq" href="#">API Telemetry Docs</a>
+<a class="hover:text-white transition-colors" href="#">Privacy Telemetry</a>
+<a class="hover:text-white transition-colors" href="#">Terms of Service</a>
+</nav>
+</div>
+</div>
+<!-- Bottom Bar -->
+<div class="pt-10 border-t border-white/[0.08] flex flex-col md:flex-row items-center justify-between gap-6 font-body text-xs text-white/40">
+<div>
+          © 2025 Meri Garage Technologies Inc. Calibrated for high-precision workshop workflows.
+        </div>
+<div class="flex items-center gap-8 font-headline text-[11px] tracking-wider uppercase text-white/60">
+<span class="text-garage-red">#E31B23 RED</span>
+<span class="text-garage-blue">#2563EB ROYAL BLUE</span>
+<span class="text-white">#FFFFFF WHITE</span>
+</div>
+</div>
+</div>
+</footer>
+<!-- ========================================================================= -->
+<!-- JAVASCRIPT: INTERACTIVE EXPAND / COLLAPSE & MINIMAL FILTER LOGIC          -->
+<!-- ========================================================================= -->
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const faqItems = document.querySelectorAll('.faq-item');
+      const filterPills = document.querySelectorAll('.filter-pill');
+
+      // Pre-open Question 01 for confident discoverability
+      if (faqItems.length > 0) {
+        faqItems[0].classList.add('active');
+      }
+
+      // Accordion Click Logic
+      faqItems.forEach(item => {
+        const header = item.querySelector('.faq-header');
+        header.addEventListener('click', () => {
+          const isActive = item.classList.contains('active');
+          
+          // Close others to preserve minimal, uncluttered aesthetic
+          faqItems.forEach(other => {
+            if (other !== item) {
+              other.classList.remove('active');
+            }
+          });
+
+          if (isActive) {
+            item.classList.remove('active');
+          } else {
+            item.classList.add('active');
+          }
+        });
+      });
+
+      // Filter Pill Logic
+      filterPills.forEach(pill => {
+        pill.addEventListener('click', () => {
+          filterPills.forEach(p => {
+            p.classList.remove('active', 'border-garage-red', 'bg-garage-red', 'text-white');
+            p.classList.add('border-white/10', 'bg-transparent', 'text-white/70');
+          });
+
+          pill.classList.add('active', 'border-garage-red', 'bg-garage-red', 'text-white');
+          pill.classList.remove('border-white/10', 'bg-transparent', 'text-white/70');
+
+          const category = pill.getAttribute('data-cat');
+
+          faqItems.forEach(item => {
+            const itemCat = item.getAttribute('data-category');
+            if (category === 'all' || itemCat === category) {
+              item.style.display = 'block';
+            } else {
+              item.style.display = 'none';
+              item.classList.remove('active');
+            }
+          });
+        });
+      });
+    });
+  </script>
+</body></html>

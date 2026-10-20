@@ -3,9 +3,12 @@ import { Link } from 'react-router-dom';
 import { api } from '../api/client';
 import type { UserReviewDto, UpdateReviewRequest } from '../api/types';
 import { Modal } from '../components/Modal';
+import { UserAvatar } from '../components/UserAvatar';
+import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/NotificationContext';
 
 export const MyReviewsPage: React.FC = () => {
+  const { user } = useAuth();
   const { showSuccess, showError, showWarning } = useToast();
   const [reviews, setReviews] = useState<UserReviewDto[]>([]);
   const [loading, setLoading] = useState(true);
@@ -167,33 +170,50 @@ export const MyReviewsPage: React.FC = () => {
           {reviews.map((r) => (
             <div key={r.id} className="card p-6 border border-border hover:border-border/80 transition-all">
               <div className="flex-between items-start flex-wrap gap-4 mb-3">
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <Link
-                      to={r.garageSlug ? `/garages/${r.garageSlug}` : `/garages`}
-                      className="text-lg font-bold text-white hover:text-primary transition-colors flex items-center gap-1.5"
-                    >
-                      <span>{r.garageName}</span>
-                      <span className="material-symbols-outlined text-xs text-secondary">open_in_new</span>
-                    </Link>
-                    {r.garageCity && (
-                      <span className="text-2xs font-mono text-muted">({r.garageCity})</span>
-                    )}
+                <div className="flex items-center gap-3.5">
+                  <div className="review-avatar-ring">
+                    <UserAvatar
+                      photoUrl={
+                        r.authorProfilePhotoUrl ||
+                        user?.profilePhotoUrl ||
+                        (user?.id ? `/api/users/${user.id}/photo` : undefined)
+                      }
+                      name={r.authorFullName || user?.fullName}
+                      email={user?.email}
+                      size="md"
+                      showBorder={false}
+                    />
                   </div>
-                  <div className="flex items-center gap-2 text-2xs text-muted">
-                    <span>Submitted on {new Date(r.createdAt).toLocaleDateString()}</span>
-                    <span>•</span>
-                    <span
-                      className={`badge badge-xs font-mono ${
-                        r.status === 'PUBLISHED'
-                          ? 'badge-success'
-                          : r.status === 'PENDING'
-                          ? 'badge-pending'
-                          : 'badge-secondary'
-                      }`}
-                    >
-                      {r.status}
-                    </span>
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <Link
+                        to={r.garageSlug ? `/garages/${r.garageSlug}` : `/garages`}
+                        className="text-lg font-bold text-white hover:text-primary transition-colors flex items-center gap-1.5"
+                      >
+                        <span>{r.garageName}</span>
+                        <span className="material-symbols-outlined text-xs text-secondary">open_in_new</span>
+                      </Link>
+                      {r.garageCity && (
+                        <span className="text-2xs font-mono text-muted">({r.garageCity})</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 text-2xs text-muted">
+                      <span className="font-medium text-slate-300">Reviewed by {r.authorFullName || user?.fullName || 'You'}</span>
+                      <span>•</span>
+                      <span>Submitted on {new Date(r.createdAt).toLocaleDateString()}</span>
+                      <span>•</span>
+                      <span
+                        className={`badge badge-xs font-mono ${
+                          r.status === 'PUBLISHED'
+                            ? 'badge-success'
+                            : r.status === 'PENDING'
+                            ? 'badge-pending'
+                            : 'badge-secondary'
+                        }`}
+                      >
+                        {r.status}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
@@ -260,6 +280,26 @@ export const MyReviewsPage: React.FC = () => {
       >
         {editingReview && (
           <form onSubmit={handleUpdateReview} className="space-y-4 text-xs">
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-surface-raised border border-border">
+              <div className="review-avatar-ring" style={{ width: '38px', height: '38px' }}>
+                <UserAvatar
+                  photoUrl={
+                    editingReview.authorProfilePhotoUrl ||
+                    user?.profilePhotoUrl ||
+                    (user?.id ? `/api/users/${user.id}/photo` : undefined)
+                  }
+                  name={editingReview.authorFullName || user?.fullName}
+                  email={user?.email}
+                  size="sm"
+                  showBorder={false}
+                />
+              </div>
+              <div>
+                <span className="text-muted block text-2xs">Editing review as</span>
+                <span className="font-bold text-white text-xs">{editingReview.authorFullName || user?.fullName || 'Verified Motorist'}</span>
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="label">Service Quality (1-5)</label>

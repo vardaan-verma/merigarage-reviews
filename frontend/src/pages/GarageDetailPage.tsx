@@ -810,11 +810,18 @@ export const GarageDetailPage: React.FC = () => {
                   >
                     <div className="flex-between items-start mb-3">
                       <div className="flex items-center gap-3">
-                        <UserAvatar
-                          photoUrl={rev.authorProfilePhotoUrl}
-                          name={rev.authorFullName}
-                          size="md"
-                        />
+                        <div className="review-avatar-ring">
+                          <UserAvatar
+                            photoUrl={
+                              rev.authorProfilePhotoUrl ||
+                              (user && (user.id === rev.authorUserId || user.fullName === rev.authorFullName) ? user.profilePhotoUrl : undefined) ||
+                              (rev.authorUserId ? `/api/users/${rev.authorUserId}/photo` : undefined)
+                            }
+                            name={rev.authorFullName}
+                            size="md"
+                            showBorder={false}
+                          />
+                        </div>
                         <div>
                           <div className="flex items-center gap-2">
                             <span className="font-bold text-sm text-white">{rev.authorFullName}</span>
@@ -1126,6 +1133,22 @@ export const GarageDetailPage: React.FC = () => {
         title={editingReviewId ? 'Edit Your Review' : `Review ${garage.name}`}
       >
         <form onSubmit={handleReviewSubmit} className="space-y-4">
+          {user && (
+            <div className="flex items-center gap-3 p-3 rounded-xl bg-elevated border border-border">
+              <div className="review-avatar-ring" style={{ width: '38px', height: '38px' }}>
+                <UserAvatar
+                  photoUrl={user.profilePhotoUrl || (user.id ? `/api/users/${user.id}/photo` : undefined)}
+                  name={user.fullName}
+                  size="sm"
+                  showBorder={false}
+                />
+              </div>
+              <div className="text-xs">
+                <span className="text-muted block text-2xs">{editingReviewId ? 'Editing review as' : 'Writing review as'}</span>
+                <span className="font-bold text-white">{user.fullName || user.email}</span>
+              </div>
+            </div>
+          )}
 
           <p className="text-xs text-secondary">
             Rate your experience across all 4 automotive care pillars:

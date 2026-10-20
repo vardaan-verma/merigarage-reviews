@@ -80,6 +80,7 @@ public class ReviewController {
     }
 
     @PostMapping("/api/garages/{garageId}/reviews")
+    @org.springframework.transaction.annotation.Transactional
     public ResponseEntity<ReviewDto> createReview(
             @PathVariable Long garageId,
             @Valid @RequestBody CreateReviewRequest request
@@ -90,6 +91,7 @@ public class ReviewController {
     }
 
     @PutMapping("/api/reviews/{id}")
+    @org.springframework.transaction.annotation.Transactional
     public ResponseEntity<ReviewDto> updateReview(
             @PathVariable Long id,
             @Valid @RequestBody UpdateReviewRequest request
